@@ -176,6 +176,7 @@ function MainApp() {
         roomCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
         title: boardData.title || 'Untitled Whiteboard',
         description: boardData.description || 'Collaborative whiteboard canvas',
+        template: boardData.template || 'blank',
         createdBy: user?.id,
         isPublic: boardData.isPublic !== false,
         gridStyle: boardData.gridStyle || 'dots',

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal, Input, Button } from '../common';
 
 /**
@@ -9,10 +9,20 @@ import { Modal, Input, Button } from '../common';
 export default function NewBoardModal({ isOpen, onClose, onCreateBoard }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [template, setTemplate] = useState('architecture');
+  const [template, setTemplate] = useState('blank');
   const [gridStyle, setGridStyle] = useState('dots');
   const [isPublic, setIsPublic] = useState(true);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTitle('');
+      setDescription('');
+      setTemplate('blank');
+      setGridStyle('dots');
+      setIsPublic(true);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -31,8 +41,8 @@ export default function NewBoardModal({ isOpen, onClose, onCreateBoard }) {
   };
 
   const templates = [
-    { id: 'architecture', icon: 'schema', label: 'System Architecture', desc: 'Ingress, microservices, event stream & notes' },
     { id: 'blank', icon: 'crop_free', label: 'Blank Canvas', desc: 'Start with an empty infinite board' },
+    { id: 'architecture', icon: 'schema', label: 'System Architecture', desc: 'Ingress, microservices, event stream & notes' },
     { id: 'retro', icon: 'sticky_note_2', label: 'Retrospective', desc: 'What went well, what to improve' },
     { id: 'flowchart', icon: 'account_tree', label: 'Flowchart', desc: 'Decision trees and process flows' },
   ];

@@ -1,111 +1,218 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    background-color: #FAF6F2;
+    color: #292323;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  #root {
+    width: 100%;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+}
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+/* Material Symbols */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  display: inline-block;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'liga';
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+/* Custom Scrollbars — warm cream/neutral tint */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D6CECA;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B8AEA9;
 }
 
-body {
-  margin: 0;
+/* Canvas backgrounds — neutral subtle dots and grid */
+.bg-canvas-dots {
+  background-image: radial-gradient(#D6CECA 1.25px, transparent 1.25px);
+  background-size: 24px 24px;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+.bg-canvas-grid-major {
+  background-image: linear-gradient(to right, #E8DDD8 1px, transparent 1px),
+                    linear-gradient(to bottom, #E8DDD8 1px, transparent 1px);
+  background-size: 120px 120px;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+/* ─── Animations ───────────────────────────────────────────────────────── */
+
+/* Float */
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px) rotate(var(--rot, 0deg)); }
+  50% { transform: translateY(-8px) rotate(calc(var(--rot, 0deg) + 1deg)); }
+}
+.animate-float {
+  animation: floatSlow 6s ease-in-out infinite;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+/* Hero 3D board gentle rock */
+@keyframes boardRock {
+  0%, 100% { transform: perspective(1000px) rotateY(-8deg) rotateX(4deg) translateY(0px); }
+  50%       { transform: perspective(1000px) rotateY(-6deg) rotateX(3deg) translateY(-6px); }
 }
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+.animate-board-rock {
+  animation: boardRock 8s ease-in-out infinite;
+  transform-style: preserve-3d;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+/* Hero 3D board entrance */
+@keyframes boardEntrance {
+  from { opacity: 0; transform: perspective(1000px) rotateY(-20deg) rotateX(8deg) translateY(24px) scale(0.95); }
+  to   { opacity: 1; transform: perspective(1000px) rotateY(-8deg)  rotateX(4deg) translateY(0px)  scale(1); }
+}
+.animate-board-entrance {
+  animation: boardEntrance 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-style: preserve-3d;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+/* Floating chip elements around the 3D board */
+@keyframes chipFloat1 {
+  0%, 100% { transform: translate(0, 0) rotate(-2deg); }
+  33%       { transform: translate(4px, -10px) rotate(0deg); }
+  66%       { transform: translate(-2px, -5px) rotate(-3deg); }
 }
+.animate-chip-1 { animation: chipFloat1 7s ease-in-out infinite; }
+
+@keyframes chipFloat2 {
+  0%, 100% { transform: translate(0, 0) rotate(3deg); }
+  40%       { transform: translate(-6px, -8px) rotate(1deg); }
+  70%       { transform: translate(3px, -4px) rotate(4deg); }
+}
+.animate-chip-2 { animation: chipFloat2 9s ease-in-out infinite; }
+
+@keyframes chipFloat3 {
+  0%, 100% { transform: translate(0, 0) rotate(-1deg); }
+  50%       { transform: translate(5px, -12px) rotate(2deg); }
+}
+.animate-chip-3 { animation: chipFloat3 6.5s ease-in-out infinite; }
+
+/* Hero text entrance */
+@keyframes heroTextIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-hero-text {
+  animation: heroTextIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  opacity: 0;
+}
+
+/* Fade in + up */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.3s ease-out forwards;
+}
+
+/* Scale in */
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.animate-scale-in {
+  animation: scaleIn 0.25s ease-out forwards;
+}
+
+/* Slide in from right */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.28s ease-out forwards;
+}
+
+/* Slide in from bottom */
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-in-up {
+  animation: slideInUp 0.3s ease-out forwards;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #EDE6DF 0%,
+    #F5EDE7 40%,
+    #EDE6DF 80%
+  );
+  background-size: 600px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* ─── Shadows ──────────────────────────────────────────────────────────── */
+
+/* Burgundy glow for primary button */
+.shadow-burgundy-btn {
+  box-shadow: 0 4px 14px rgba(127, 29, 63, 0.32), 0 2px 6px rgba(127, 29, 63, 0.16);
+}
+.shadow-burgundy-btn:hover {
+  box-shadow: 0 6px 20px rgba(127, 29, 63, 0.40), 0 3px 8px rgba(127, 29, 63, 0.22);
+}
+
+/* Dark Floating Toolbar */
+.shadow-canvas-toolbar {
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.35), 0 6px 14px -2px rgba(0, 0, 0, 0.25);
+}
+
+/* ─── Miscellaneous ────────────────────────────────────────────────────── */
+
+/* Toggle switch burgundy */
+.toggle-burgundy:checked {
+  background-color: #7F1D3F;
+}
+
+/* Focus ring burgundy */
+*:focus-visible {
+  outline: 2px solid #7F1D3F;
+  outline-offset: 2px;
+}
+
+/* Stagger delay helpers */
+.delay-75  { animation-delay: 75ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-500 { animation-delay: 500ms; }
+.delay-700 { animation-delay: 700ms; }

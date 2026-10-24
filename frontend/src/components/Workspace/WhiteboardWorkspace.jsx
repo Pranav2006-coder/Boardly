@@ -129,7 +129,7 @@ function WhiteboardWorkspaceInner({
       socket.off('cursor_moved');
       socket.off('active_users_changed');
     };
-  }, [board.id, isViewOnly, user]);
+  }, [board.id, isViewOnly, user, setElements]);
 
   // Push to history before mutating
   const pushHistory = useCallback(() => {
@@ -139,6 +139,7 @@ function WhiteboardWorkspaceInner({
   }, [elements]);
 
   const handleUndo = useCallback(() => {
+    if (isViewOnly) return;
     if (historyRef.current.length > 0) {
       const prev = historyRef.current.pop();
       setCanUndo(historyRef.current.length > 0);
@@ -147,7 +148,28 @@ function WhiteboardWorkspaceInner({
       socket.emit('clear_board', { boardId: board.id });
       prev.forEach(elem => socket.emit('element_created', { boardId: board.id, element: elem }));
     }
-  }, [board.id]);
+  }, [board.id, isViewOnly, setElements]);
+
+  // Placeholder for redo (TODO: useUndoRedo will implement it)
+  const canRedo = false;
+  const handleRedo = useCallback(() => {
+    if (isViewOnly) return;
+    // no-op, TODO: useUndoRedo will implement it
+  }, [isViewOnly]);
+
+  // Placeholder for export (TODO: exportPng.js)
+  const handleExport = useCallback(() => {
+    window.alert('PNG export is coming soon');
+  }, []);
+
+  // Clear board handler (shared by CanvasToolbar and SettingsDropdown)
+  const handleClearBoard = useCallback(() => {
+    if (isViewOnly || canvasLocked) return;
+    if (window.confirm('Clear the whole board for everyone?')) {
+      setElements([]);
+      getSocket().emit('clear_board', { boardId: board.id });
+    }
+  }, [isViewOnly, canvasLocked, board.id, setElements]);
 
   // Broadcast cursor movements to socket
   const handleMouseMove = (e) => {
@@ -347,29 +369,82 @@ function WhiteboardWorkspaceInner({
     setElements((prev) => prev.filter(e => e.id !== selectedId));
     getSocket().emit('element_deleted', { boardId: board.id, elementId: selectedId });
     setSelectedId(null);
-  }, [selectedId, isViewOnly, pushHistory, board.id]);
+  }, [selectedId, isViewOnly, pushHistory, board.id, setElements, setSelectedId]);
 
   // Keyboard shortcut listener
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        handleDeleteSelected();
-      } else if (e.key === 'v' || e.key === 'V') {
+        if (!isViewOnly) {
+          handleDeleteSelected();
+        }
+        return;
+      }
+
+      const isMod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+
+      if (isMod) {
+        if (key === 'y' || (e.shiftKey && key === 'z')) {
+          e.preventDefault();
+          if (!isViewOnly) {
+            handleRedo();
+          }
+          return;
+        }
+        if (key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          if (!isViewOnly) {
+            handleUndo();
+          }
+          return;
+        }
+        return;
+      }
+
+      // Ignore tool-letter shortcuts when ctrlKey, metaKey or altKey is pressed
+      if (e.altKey) return;
+
+      // When isViewOnly only allow V
+      if (key === 'v') {
         setActiveTool('select');
-      } else if (e.key === 'p' || e.key === 'P') {
+        return;
+      }
+
+      if (isViewOnly) return;
+
+      // Tool shortcuts (when not view-only)
+      if (key === 'p') {
         setActiveTool('pen');
-      } else if (e.key === 's' || e.key === 'S') {
+      } else if (key === 'e') {
+        setActiveTool('eraser');
+      } else if (key === 's') {
         setActiveTool('sticky');
-      } else if (e.key === 'r' || e.key === 'R') {
+      } else if (key === 'a') {
+        setActiveTool('system');
+      } else if (key === 'r') {
         setActiveTool('rect');
-      } else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
-        handleUndo();
+      } else if (key === 'c') {
+        setActiveTool('circle');
+      } else if (key === 'l') {
+        setActiveTool('line');
+      } else if (key === 't') {
+        setActiveTool('text');
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleDeleteSelected, handleUndo]);
+  }, [handleDeleteSelected, handleUndo, handleRedo, setActiveTool, isViewOnly]);
+
+  useEffect(() => {
+    if (isViewOnly) {
+      setActiveTool('select');
+      setSelectedId(null);
+    }
+  }, [isViewOnly, setActiveTool, setSelectedId]);
 
   const handleSaveTitle = () => {
     setIsEditingTitle(false);
@@ -504,10 +579,7 @@ function WhiteboardWorkspaceInner({
         onThemeToggle={() => setCanvasTheme(t => t === 'dark' ? 'light' : 'dark')}
         showCursors={showCursors}
         onCursorsToggle={() => setShowCursors(!showCursors)}
-        onClearBoard={() => {
-          setElements([]);
-          getSocket().emit('clear_board', { boardId: board.id });
-        }}
+        onClearBoard={handleClearBoard}
       />
 
       {/* Share Modal Popover */}
@@ -947,17 +1019,20 @@ function WhiteboardWorkspaceInner({
       )}
 
       {/* PRIMARY FLOATING WHITEBOARD TOOLBAR */}
-      {!isViewOnly && (
-        <CanvasToolbar
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40"
-          activeTool={activeTool}
-          onSelectTool={setActiveTool}
-          selectedId={selectedId}
-          onDeleteSelected={handleDeleteSelected}
-          onUndo={handleUndo}
-          canUndo={canUndo}
-        />
-      )}
+      <CanvasToolbar
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40"
+        activeTool={activeTool}
+        onSelectTool={setActiveTool}
+        selectedId={selectedId}
+        onDeleteSelected={handleDeleteSelected}
+        onUndo={handleUndo}
+        canUndo={canUndo}
+        isViewOnly={isViewOnly}
+        onRedo={handleRedo}
+        canRedo={canRedo}
+        onClear={handleClearBoard}
+        onExport={handleExport}
+      />
     </div>
   );
 }

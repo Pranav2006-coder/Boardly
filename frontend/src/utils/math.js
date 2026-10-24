@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Calculates the midpoint between two points.
  * @param {{ x: number, y: number }} a
  * @param {{ x: number, y: number }} b
@@ -232,4 +232,19 @@ export function getBounds(element) {
     default:
       return null;
   }
+}
+
+/**
+ * Resolves the effective fill color for a shape.
+ * - null  => "auto": returns a light tint of the stroke color (strokeColor + "15" alpha)
+ * - 'none' => transparent: returns 'none'
+ * - any other string => returned as-is
+ * @param {string | null} fillColor  The user-selected fill value.
+ * @param {string} strokeColor       The active stroke/outline color.
+ * @returns {string}
+ */
+export function resolveFill(fillColor, strokeColor) {
+  if (fillColor === null) return strokeColor + '15';
+  if (fillColor === 'none') return 'none';
+  return fillColor;
 }

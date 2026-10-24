@@ -9,6 +9,7 @@ import ColorPicker from './ColorPicker';
 import RemoteCursor from './RemoteCursor';
 import StickyNote from './StickyNote';
 import { BoardProvider, useBoard } from '../../context/BoardContext';
+import { resolveFill } from '../../utils/math';
 
 export default function WhiteboardWorkspace(props) {
   return (
@@ -36,6 +37,8 @@ function WhiteboardWorkspaceInner({
     setStrokeWidth,
     isDashed,
     setIsDashed,
+    fillColor,
+    setFillColor,
     elements,
     setElements,
     selectedId,
@@ -274,7 +277,7 @@ function WhiteboardWorkspaceInner({
         stroke: activeColor,
         strokeWidth,
         dashed: isDashed,
-        fill: `${activeColor}15`
+        fill: resolveFill(fillColor, activeColor)
       };
       setElements((prev) => [...prev, newRect]);
       getSocket().emit('element_created', { boardId: board.id, element: newRect });
@@ -290,7 +293,7 @@ function WhiteboardWorkspaceInner({
         radius: 60,
         stroke: activeColor,
         strokeWidth,
-        fill: `${activeColor}15`
+        fill: resolveFill(fillColor, activeColor)
       };
       setElements((prev) => [...prev, newCircle]);
       getSocket().emit('element_created', { boardId: board.id, element: newCircle });
@@ -596,7 +599,7 @@ function WhiteboardWorkspaceInner({
           <div className="flex items-center gap-2 mx-auto">
             <span className="material-symbols-outlined text-base text-[#7F1D3F]">visibility</span>
             <span className="font-semibold">View-Only Mode</span>
-            <span className="text-[#7F1D3F]/80 hidden sm:inline">— You have read permissions for this canvas.</span>
+            <span className="text-[#7F1D3F]/80 hidden sm:inline">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â You have read permissions for this canvas.</span>
           </div>
           <button
             onClick={() => setIsViewOnly(false)}
@@ -657,7 +660,7 @@ function WhiteboardWorkspaceInner({
           </span>
           <span className="text-[#D6CECA]">|</span>
           <span className="text-[10px] text-[#292323] font-mono font-bold">
-            X: {Math.round(-pan.x)} • Y: {Math.round(-pan.y)}
+            X: {Math.round(-pan.x)} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ Y: {Math.round(-pan.y)}
           </span>
           <span className="text-[#D6CECA]">|</span>
           <div className="flex items-center gap-1 text-[#786C6C] text-[10px] font-semibold">
@@ -1015,6 +1018,8 @@ function WhiteboardWorkspaceInner({
           onChangeStrokeWidth={setStrokeWidth}
           isDashed={isDashed}
           onToggleDashed={setIsDashed}
+          fillColor={fillColor}
+          onChangeFillColor={setFillColor}
         />
       )}
 

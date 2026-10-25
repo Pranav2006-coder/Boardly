@@ -8,6 +8,7 @@ import CanvasToolbar from './CanvasToolbar';
 import ColorPicker from './ColorPicker';
 import RemoteCursor from './RemoteCursor';
 import StickyNote from './StickyNote';
+import ElementRenderer from './ElementRenderer';
 import { BoardProvider, useBoard } from '../../context/BoardContext';
 import { resolveFill } from '../../utils/math';
 
@@ -217,7 +218,16 @@ function WhiteboardWorkspaceInner({
       const snappedY = snapToGrid ? Math.round((canvasY - dragOffset.y) / 16) * 16 : canvasY - dragOffset.y;
 
       setElements((prev) =>
-        prev.map((el) => el.id === draggingId ? { ...el, x: snappedX, y: snappedY } : el)
+        prev.map((el) => {
+          if (el.id !== draggingId) return el;
+          // For line/arrow, shift both endpoints by the same delta
+          if (el.x2 !== undefined && el.y2 !== undefined) {
+            const dx = snappedX - el.x;
+            const dy = snappedY - el.y;
+            return { ...el, x: snappedX, y: snappedY, x2: el.x2 + dx, y2: el.y2 + dy };
+          }
+          return { ...el, x: snappedX, y: snappedY };
+        })
       );
     }
   };
@@ -339,6 +349,92 @@ function WhiteboardWorkspaceInner({
         getSocket().emit('element_created', { boardId: board.id, element: newText });
       }
       setActiveTool('select');
+    } else if (activeTool === 'line') {
+      pushHistory();
+      const newLine = {
+        id: `line-${Date.now()}`,
+        type: 'line',
+        x: canvasX,
+        y: canvasY,
+        x2: canvasX + 200,
+        y2: canvasY,
+        stroke: activeColor,
+        strokeWidth,
+        dashed: isDashed,
+      };
+      setElements((prev) => [...prev, newLine]);
+      getSocket().emit('element_created', { boardId: board.id, element: newLine });
+      setActiveTool('select');
+      setSelectedId(newLine.id);
+    } else if (activeTool === 'arrow') {
+      pushHistory();
+      const newArrow = {
+        id: `arrow-${Date.now()}`,
+        type: 'arrow',
+        x: canvasX,
+        y: canvasY,
+        x2: canvasX + 200,
+        y2: canvasY,
+        stroke: activeColor,
+        strokeWidth,
+        dashed: isDashed,
+      };
+      setElements((prev) => [...prev, newArrow]);
+      getSocket().emit('element_created', { boardId: board.id, element: newArrow });
+      setActiveTool('select');
+      setSelectedId(newArrow.id);
+    } else if (activeTool === 'triangle') {
+      pushHistory();
+      const newTriangle = {
+        id: `triangle-${Date.now()}`,
+        type: 'triangle',
+        x: canvasX,
+        y: canvasY,
+        size: 100,
+        stroke: activeColor,
+        strokeWidth,
+        dashed: isDashed,
+        fill: resolveFill(fillColor, activeColor),
+      };
+      setElements((prev) => [...prev, newTriangle]);
+      getSocket().emit('element_created', { boardId: board.id, element: newTriangle });
+      setActiveTool('select');
+      setSelectedId(newTriangle.id);
+    } else if (activeTool === 'diamond') {
+      pushHistory();
+      const newDiamond = {
+        id: `diamond-${Date.now()}`,
+        type: 'diamond',
+        x: canvasX,
+        y: canvasY,
+        width: 160,
+        height: 100,
+        stroke: activeColor,
+        strokeWidth,
+        dashed: isDashed,
+        fill: resolveFill(fillColor, activeColor),
+      };
+      setElements((prev) => [...prev, newDiamond]);
+      getSocket().emit('element_created', { boardId: board.id, element: newDiamond });
+      setActiveTool('select');
+      setSelectedId(newDiamond.id);
+    } else if (activeTool === 'star') {
+      pushHistory();
+      const newStar = {
+        id: `star-${Date.now()}`,
+        type: 'star',
+        x: canvasX,
+        y: canvasY,
+        size: 100,
+        stroke: activeColor,
+        strokeWidth,
+        dashed: isDashed,
+        fill: resolveFill(fillColor, activeColor),
+      };
+      setElements((prev) => [...prev, newStar]);
+      getSocket().emit('element_created', { boardId: board.id, element: newStar });
+      setActiveTool('select');
+      setSelectedId(newStar.id);
     }
   };
 
@@ -599,7 +695,7 @@ function WhiteboardWorkspaceInner({
           <div className="flex items-center gap-2 mx-auto">
             <span className="material-symbols-outlined text-base text-[#7F1D3F]">visibility</span>
             <span className="font-semibold">View-Only Mode</span>
-            <span className="text-[#7F1D3F]/80 hidden sm:inline">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â You have read permissions for this canvas.</span>
+            <span className="text-[#7F1D3F]/80 hidden sm:inline">ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â You have read permissions for this canvas.</span>
           </div>
           <button
             onClick={() => setIsViewOnly(false)}
@@ -660,7 +756,7 @@ function WhiteboardWorkspaceInner({
           </span>
           <span className="text-[#D6CECA]">|</span>
           <span className="text-[10px] text-[#292323] font-mono font-bold">
-            X: {Math.round(-pan.x)} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ Y: {Math.round(-pan.y)}
+            X: {Math.round(-pan.x)} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Y: {Math.round(-pan.y)}
           </span>
           <span className="text-[#D6CECA]">|</span>
           <div className="flex items-center gap-1 text-[#786C6C] text-[10px] font-semibold">
@@ -707,41 +803,42 @@ function WhiteboardWorkspaceInner({
         >
           {/* SVG Strokes & Connectors Layer */}
           <svg className="absolute inset-0 w-[5000px] h-[5000px] pointer-events-none overflow-visible">
-            {elements
-              .filter((e) => e.type === 'stroke' || e.type === 'curve' || e.type === 'line' || e.type === 'arrow')
-              .map((elem) => {
-                if (elem.type === 'stroke' && elem.points?.length > 1) {
-                  const d = elem.points.reduce((acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`, '');
-                  return (
-                    <path
-                      key={elem.id}
-                      d={d}
-                      fill="none"
-                      stroke={elem.color || '#7F1D3F'}
-                      strokeWidth={elem.width || 3}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeDasharray={elem.dashed ? '6 6' : undefined}
-                    />
-                  );
-                }
-                if (elem.type === 'curve' && elem.data?.path) {
-                  return (
-                    <path
-                      key={elem.id}
-                      d={elem.data.path}
-                      fill="none"
-                      stroke={elem.data.stroke || '#7F1D3F'}
-                      strokeWidth={elem.data.strokeWidth || 3}
-                      strokeLinecap="round"
-                      markerEnd={elem.data.hasArrow ? 'url(#arrow-burgundy)' : undefined}
-                    />
-                  );
-                }
-                return null;
-              })}
+            <defs>
+              <marker id="arrow-elem-head" markerWidth="6" markerHeight="6" refX="6" refY="5" viewBox="0 0 10 10" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="inherit" />
+              </marker>
+            </defs>
 
-            {/* Currently drawing stroke */}
+            {elements
+              .filter((e) =>
+                e.type === 'stroke' ||
+                e.type === 'curve' ||
+                e.type === 'line' ||
+                e.type === 'arrow' ||
+                e.type === 'triangle' ||
+                e.type === 'diamond' ||
+                e.type === 'star'
+              )
+              .map((elem) => (
+                <ElementRenderer
+                  key={elem.id}
+                  elem={elem}
+                  isSelected={selectedId === elem.id}
+                  activeTool={activeTool}
+                  isViewOnly={isViewOnly}
+                  canvasLocked={canvasLocked}
+                  onSelect={setSelectedId}
+                  onDragStart={(e, el) => {
+                    setDraggingId(el.id);
+                    const r = containerRef.current.getBoundingClientRect();
+                    const cX = (e.clientX - r.left - pan.x) / zoom;
+                    const cY = (e.clientY - r.top - pan.y) / zoom;
+                    setDragOffset({ x: cX - el.x, y: cY - el.y });
+                  }}
+                />
+              ))}
+
+            {/* Currently drawing stroke (live preview) */}
             {currentPath && currentPath.points?.length > 1 && (
               <path
                 d={currentPath.points.reduce((acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`, '')}

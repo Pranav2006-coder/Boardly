@@ -1,26 +1,22 @@
 import { memo } from 'react';
 import { getBounds, arrowHeadPoints } from '../../utils/math';
 
-const PAD = 6; // selection outline padding in canvas px
+const PAD = 6; // selection box padding in canvas px
 
 /**
  * Renders a single SVG element (stroke, curve, line, arrow,
- * triangle, diamond or star).
+ * triangle, diamond or star) inside the parent pointer-events-none SVG.
  *
- * The parent SVG must have pointer-events:none on itself; this
- * component sets pointer-events:auto on the individual shapes so
- * that clicks can propagate to onSelect / onDragStart only when
- * the select tool is active.
+ * Individual shapes opt-in to pointer events via SVG pointerEvents="auto".
  *
- * @param {{
- *   elem: object,
- *   isSelected: boolean,
- *   activeTool: string,
- *   isViewOnly: boolean,
- *   canvasLocked: boolean,
- *   onSelect: (id: string) => void,
- *   onDragStart: (e: MouseEvent, elem: object) => void,
- * }} props
+ * Props:
+ *   elem           – the element object
+ *   isSelected     – boolean, whether this element is selected
+ *   activeTool     – current tool string
+ *   isViewOnly     – boolean
+ *   canvasLocked   – boolean
+ *   onSelect(id)   – call when element is clicked/focused
+ *   onDragStart(e, elem) – call to begin dragging
  */
 const ElementRenderer = memo(function ElementRenderer({
   elem,
@@ -32,12 +28,8 @@ const ElementRenderer = memo(function ElementRenderer({
   onDragStart,
 }) {
   const canInteract = activeTool === 'select' && !isViewOnly && !canvasLocked;
+  const cursor = canInteract ? 'grab' : 'default';
 
-  // ── Shared interaction handlers ──────────────────────────────────────────
-  const handleClick = (e) => {
-    e.stopPropagation();
-    onSelect(elem.id);
-  };
   const handleMouseDown = (e) => {
     if (!canInteract) return;
     e.stopPropagation();
@@ -45,35 +37,35 @@ const ElementRenderer = memo(function ElementRenderer({
     onDragStart(e, elem);
   };
 
-  const interactionProps = {
-    onClick: handleClick,
-    onMouseDown: handleMouseDown,
-    style: { pointerEvents: canInteract ? 'auto' : 'none', cursor: canInteract ? 'grab' : 'default' },
+  const handleClick = (e) => {
+    e.stopPropagation();
+    onSelect(elem.id);
   };
 
-  // ── Selection outline box ─────────────────────────────────────────────
-  function SelectionBox() {
-    if (!isSelected) return null;
+  // ── Selection outline rectangle ──────────────────────────────────────────
+  let selectionBox = null;
+  if (isSelected) {
     const b = getBounds(elem);
-    if (!b) return null;
-    return (
-      <rect
-        x={b.x - PAD}
-        y={b.y - PAD}
-        width={b.width + PAD * 2}
-        height={b.height + PAD * 2}
-        fill="none"
-        stroke="#111111"
-        strokeWidth={1.5}
-        strokeDasharray="5 4"
-        strokeLinecap="round"
-        pointerEvents="none"
-        rx={3}
-      />
-    );
+    if (b && isFinite(b.x) && isFinite(b.y) && isFinite(b.width) && isFinite(b.height)) {
+      selectionBox = (
+        <rect
+          x={b.x - PAD}
+          y={b.y - PAD}
+          width={Math.max(0, b.width + PAD * 2)}
+          height={Math.max(0, b.height + PAD * 2)}
+          fill="none"
+          stroke="#111111"
+          strokeWidth={1.5}
+          strokeDasharray="6 4"
+          strokeLinecap="round"
+          pointerEvents="none"
+          rx={3}
+        />
+      );
+    }
   }
 
-  // ── Stroke (freehand pen) ────────────────────────────────────────────
+  // ── Stroke (freehand pen) ────────────────────────────────────────────────
   if (elem.type === 'stroke') {
     if (!elem.points || elem.points.length < 2) return null;
     const d = elem.points.reduce(
@@ -85,19 +77,22 @@ const ElementRenderer = memo(function ElementRenderer({
         <path
           d={d}
           fill="none"
-          stroke={elem.color || '#7F1D3F'}
+          stroke={elem.color || '#111111'}
           strokeWidth={elem.width || 3}
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeDasharray={elem.dashed ? '6 6' : undefined}
-          {...interactionProps}
+          pointerEvents={canInteract ? 'auto' : 'none'}
+          style={{ cursor }}
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
         />
-        <SelectionBox />
+        {selectionBox}
       </g>
     );
   }
 
-  // ── Curve ────────────────────────────────────────────────────────────
+  // ── Curve ────────────────────────────────────────────────────────────────
   if (elem.type === 'curve') {
     if (!elem.data?.path) return null;
     return (
@@ -105,129 +100,162 @@ const ElementRenderer = memo(function ElementRenderer({
         <path
           d={elem.data.path}
           fill="none"
-          stroke={elem.data.stroke || '#7F1D3F'}
+          stroke={elem.data.stroke || '#111111'}
           strokeWidth={elem.data.strokeWidth || 3}
           strokeLinecap="round"
           markerEnd={elem.data.hasArrow ? 'url(#arrow-burgundy)' : undefined}
-          {...interactionProps}
+          pointerEvents={canInteract ? 'auto' : 'none'}
+          style={{ cursor }}
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
         />
-        <SelectionBox />
+        {selectionBox}
       </g>
     );
   }
 
-  // ── Line ─────────────────────────────────────────────────────────────
+  // ── Line ─────────────────────────────────────────────────────────────────
   // Fields: x, y, x2, y2, stroke, strokeWidth, dashed
   if (elem.type === 'line') {
+    const { x, y, x2, y2 } = elem;
+    if (!isFinite(x) || !isFinite(y) || !isFinite(x2) || !isFinite(y2)) return null;
+    const strokeColor = elem.stroke || '#111111';
+    const sw = elem.strokeWidth || 3;
     return (
-      <g>
+      <g onClick={handleClick} onMouseDown={handleMouseDown}>
+        {/* Visible line */}
         <line
-          x1={elem.x}
-          y1={elem.y}
-          x2={elem.x2}
-          y2={elem.y2}
-          stroke={elem.stroke || '#7F1D3F'}
-          strokeWidth={elem.strokeWidth || 3}
+          x1={x} y1={y} x2={x2} y2={y2}
+          stroke={strokeColor}
+          strokeWidth={sw}
           strokeLinecap="round"
           strokeDasharray={elem.dashed ? '6 6' : undefined}
-          {...interactionProps}
+          pointerEvents="none"
         />
-        <SelectionBox />
+        {/* Wide invisible hit area */}
+        <line
+          x1={x} y1={y} x2={x2} y2={y2}
+          stroke="transparent"
+          strokeWidth={Math.max(14, sw + 8)}
+          strokeLinecap="round"
+          pointerEvents={canInteract ? 'auto' : 'none'}
+          style={{ cursor }}
+        />
+        {selectionBox}
       </g>
     );
   }
 
-  // ── Arrow ─────────────────────────────────────────────────────────────
+  // ── Arrow ─────────────────────────────────────────────────────────────────
   // Fields: x, y, x2, y2, stroke, strokeWidth, dashed
   if (elem.type === 'arrow') {
-    const pts = arrowHeadPoints(elem.x, elem.y, elem.x2, elem.y2, 14);
+    const { x, y, x2, y2 } = elem;
+    if (!isFinite(x) || !isFinite(y) || !isFinite(x2) || !isFinite(y2)) return null;
+    const strokeColor = elem.stroke || '#111111';
+    const sw = elem.strokeWidth || 3;
+    const pts = arrowHeadPoints(x, y, x2, y2, 12 + sw * 2);
     const headPoly = pts.map((p) => `${p.x},${p.y}`).join(' ');
-    const strokeColor = elem.stroke || '#7F1D3F';
     return (
-      <g {...interactionProps}>
+      <g onClick={handleClick} onMouseDown={handleMouseDown}>
+        {/* Visible shaft */}
         <line
-          x1={elem.x}
-          y1={elem.y}
-          x2={elem.x2}
-          y2={elem.y2}
+          x1={x} y1={y} x2={x2} y2={y2}
           stroke={strokeColor}
-          strokeWidth={elem.strokeWidth || 3}
+          strokeWidth={sw}
           strokeLinecap="round"
           strokeDasharray={elem.dashed ? '6 6' : undefined}
-          pointerEvents="inherit"
+          pointerEvents="none"
         />
+        {/* Arrowhead */}
         <polygon
           points={headPoly}
           fill={strokeColor}
-          pointerEvents="inherit"
+          pointerEvents="none"
         />
-        <SelectionBox />
+        {/* Wide invisible hit area */}
+        <line
+          x1={x} y1={y} x2={x2} y2={y2}
+          stroke="transparent"
+          strokeWidth={Math.max(14, sw + 8)}
+          strokeLinecap="round"
+          pointerEvents={canInteract ? 'auto' : 'none'}
+          style={{ cursor }}
+        />
+        {selectionBox}
       </g>
     );
   }
 
-  // ── Triangle ─────────────────────────────────────────────────────────
+  // ── Triangle ──────────────────────────────────────────────────────────────
   // Fields: x, y, size, stroke, strokeWidth, dashed, fill
   if (elem.type === 'triangle') {
+    const { x, y } = elem;
+    if (!isFinite(x) || !isFinite(y)) return null;
     const s = elem.size || 100;
-    // equilateral triangle, apex at top-centre
-    const cx = elem.x + s / 2;
     const points = [
-      `${cx},${elem.y}`,
-      `${elem.x},${elem.y + s}`,
-      `${elem.x + s},${elem.y + s}`,
+      `${x + s / 2},${y}`,
+      `${x + s},${y + s}`,
+      `${x},${y + s}`,
     ].join(' ');
     return (
       <g>
         <polygon
           points={points}
           fill={elem.fill || 'none'}
-          stroke={elem.stroke || '#7F1D3F'}
+          stroke={elem.stroke || '#111111'}
           strokeWidth={elem.strokeWidth || 3}
           strokeLinejoin="round"
           strokeDasharray={elem.dashed ? '6 6' : undefined}
-          {...interactionProps}
+          pointerEvents={canInteract ? 'auto' : 'none'}
+          style={{ cursor }}
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
         />
-        <SelectionBox />
+        {selectionBox}
       </g>
     );
   }
 
-  // ── Diamond ──────────────────────────────────────────────────────────
+  // ── Diamond ───────────────────────────────────────────────────────────────
   // Fields: x, y, width, height, stroke, strokeWidth, dashed, fill
   if (elem.type === 'diamond') {
+    const { x, y } = elem;
+    if (!isFinite(x) || !isFinite(y)) return null;
     const w = elem.width || 120;
     const h = elem.height || 80;
-    const cx = elem.x + w / 2;
-    const cy = elem.y + h / 2;
     const points = [
-      `${cx},${elem.y}`,
-      `${elem.x + w},${cy}`,
-      `${cx},${elem.y + h}`,
-      `${elem.x},${cy}`,
+      `${x + w / 2},${y}`,
+      `${x + w},${y + h / 2}`,
+      `${x + w / 2},${y + h}`,
+      `${x},${y + h / 2}`,
     ].join(' ');
     return (
       <g>
         <polygon
           points={points}
           fill={elem.fill || 'none'}
-          stroke={elem.stroke || '#7F1D3F'}
+          stroke={elem.stroke || '#111111'}
           strokeWidth={elem.strokeWidth || 3}
           strokeLinejoin="round"
           strokeDasharray={elem.dashed ? '6 6' : undefined}
-          {...interactionProps}
+          pointerEvents={canInteract ? 'auto' : 'none'}
+          style={{ cursor }}
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
         />
-        <SelectionBox />
+        {selectionBox}
       </g>
     );
   }
 
-  // ── Star (5-pointed) ─────────────────────────────────────────────────
+  // ── Star (5-pointed) ──────────────────────────────────────────────────────
   // Fields: x, y, size, stroke, strokeWidth, dashed, fill
   if (elem.type === 'star') {
-    const s = elem.size || 100;
-    const cx = elem.x + s / 2;
-    const cy = elem.y + s / 2;
+    const { x, y } = elem;
+    if (!isFinite(x) || !isFinite(y)) return null;
+    const s = elem.size || 60;
+    const cx = x + s / 2;
+    const cy = y + s / 2;
     const outerR = s / 2;
     const innerR = outerR * 0.4;
     const numPoints = 5;
@@ -242,13 +270,16 @@ const ElementRenderer = memo(function ElementRenderer({
         <polygon
           points={pts.join(' ')}
           fill={elem.fill || 'none'}
-          stroke={elem.stroke || '#7F1D3F'}
+          stroke={elem.stroke || '#111111'}
           strokeWidth={elem.strokeWidth || 3}
           strokeLinejoin="round"
           strokeDasharray={elem.dashed ? '6 6' : undefined}
-          {...interactionProps}
+          pointerEvents={canInteract ? 'auto' : 'none'}
+          style={{ cursor }}
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
         />
-        <SelectionBox />
+        {selectionBox}
       </g>
     );
   }

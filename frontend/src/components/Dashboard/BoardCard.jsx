@@ -13,7 +13,8 @@ export default function BoardCard({ board, onOpen, onToggleStar, onShare, onDele
     { bg: '#FFF8F0', accent: '#C97086' }, // Pale cream & muted rose
   ];
 
-  const colorSet = thumbnailColors[Math.abs(board.id?.charCodeAt?.(2) || 0) % thumbnailColors.length];
+  const boardId = board.id || board._id || '';
+  const colorSet = thumbnailColors[Math.abs(boardId.charCodeAt(2) || 0) % thumbnailColors.length];
 
   return (
     <div

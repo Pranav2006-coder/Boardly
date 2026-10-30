@@ -15,8 +15,9 @@ export default function ShareModal({ isOpen, onClose, board, onAddCollaborator }
 
   if (!isOpen || !board) return null;
 
+  const boardId = board.id || board._id;
   const roomCode = board.roomCode || 'X9K-72M';
-  const inviteLink = `${window.location.origin}/w/${board.id}?code=${roomCode}`;
+  const inviteLink = `${window.location.origin}/w/${boardId}?code=${roomCode}`;
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(roomCode);
@@ -35,7 +36,7 @@ export default function ShareModal({ isOpen, onClose, board, onAddCollaborator }
     if (!inviteEmail.trim()) return;
     setLoading(true);
     if (onAddCollaborator) {
-      await onAddCollaborator(board.id, inviteEmail.trim(), inviteRole);
+      await onAddCollaborator(boardId, inviteEmail.trim(), inviteRole);
     }
     setInviteEmail('');
     setLoading(false);

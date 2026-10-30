@@ -8,8 +8,17 @@ import CanvasToolbar from './CanvasToolbar';
 import ColorPicker from './ColorPicker';
 import RemoteCursor from './RemoteCursor';
 import StickyNote from './StickyNote';
+import { BoardProvider, useBoard } from '../../context/BoardContext';
 
-export default function WhiteboardWorkspace({
+export default function WhiteboardWorkspace(props) {
+  return (
+    <BoardProvider board={props.board}>
+      <WhiteboardWorkspaceInner {...props} />
+    </BoardProvider>
+  );
+}
+
+function WhiteboardWorkspaceInner({
   board,
   onBackToDashboard,
   onUpdateBoard,
@@ -20,6 +29,24 @@ export default function WhiteboardWorkspace({
   const [boardTitle, setBoardTitle] = useState(board.title || 'Untitled Whiteboard');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isViewOnly, setIsViewOnly] = useState(board.role === 'viewer' || board.userRole === 'viewer');
+  const {
+    isViewOnly,
+    setIsViewOnly,
+    activeTool,
+    setActiveTool,
+    activeColor,
+    setActiveColor,
+    strokeWidth,
+    setStrokeWidth,
+    isDashed,
+    setIsDashed,
+    elements,
+    setElements,
+    selectedId,
+    setSelectedId,
+  } = useBoard();
+  const [boardTitle, setBoardTitle] = useState(board.title || 'Untitled Whiteboard');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -36,15 +63,7 @@ export default function WhiteboardWorkspace({
   const [showCursors, setShowCursors] = useState(true);
   const [canvasLocked, setCanvasLocked] = useState(false);
 
-  // Active Tool & Styling
-  const [activeTool, setActiveTool] = useState('select'); // 'select' | 'pen' | 'eraser' | 'sticky' | 'rect' | 'circle' | 'line' | 'arrow' | 'text' | 'system'
-  const [activeColor, setActiveColor] = useState('#7F1D3F');
-  const [strokeWidth, setStrokeWidth] = useState(3);
-  const [isDashed, setIsDashed] = useState(false);
-
   // Elements State
-  const [elements, setElements] = useState(board.elements || []);
-  const [selectedId, setSelectedId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 

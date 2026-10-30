@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { Room } from '../models/Room.js';
+import { User } from '../models/User.js';
 import { BoardElement } from '../models/BoardElement.js';
 
 /**
@@ -23,6 +24,7 @@ export const createBoard = async (req, res) => {
 
     const {
       title,
+      description,
       grid,
       gridType,
       gridStyle,
@@ -47,6 +49,7 @@ export const createBoard = async (req, res) => {
 
     const room = new Room({
       title: (title && title.trim()) || 'Untitled Whiteboard',
+      description: (description && description.trim()) || '',
       roomCode,
       owner: userId,
       members: [],
@@ -54,6 +57,8 @@ export const createBoard = async (req, res) => {
       defaultRole: validDefaultRole,
       backgroundColor: backgroundColor || '#ffffff',
       gridType: validGridType,
+      template: template || 'blank',
+      isStarred: false,
     });
 
     await room.save();
@@ -145,7 +150,7 @@ export const joinBoardByCode = async (req, res) => {
 
     // Check if user is already a member
     const existingMember = board.members.find(
-      (m) => m.user.toString() === normalizedUserId
+      (m) => (m.user?._id ? m.user._id.toString() : m.user?.toString()) === normalizedUserId
     );
 
     let assignedRole = board.defaultRole;
@@ -178,7 +183,7 @@ export const joinBoardByCode = async (req, res) => {
 };
 
 /**
- * GET /api/boards/:id or GET /api/boards/code/:code
+ * GET /api/boards/:id or GET /api/boards/code/:code or GET /api/boards/room/:code
  * getBoardDetails: Hydration: returns the board plus BoardElement.find({ boardId, isDeleted:false })
  * sorted by zIndex, then createdAt (FR-08, AC-05).
  */
@@ -293,8 +298,8 @@ export const updateMemberRole = async (req, res) => {
 };
 
 /**
- * PATCH /api/boards/:id
- * updateBoardSettings: Owner/Editor. Updates title, background colour, and grid type.
+ * PATCH or PUT /api/boards/:id
+ * updateBoardSettings: Owner/Editor. Updates title, description, isStarred, background colour, and grid type.
  */
 export const updateBoardSettings = async (req, res) => {
   try {
@@ -305,6 +310,8 @@ export const updateBoardSettings = async (req, res) => {
 
     const {
       title,
+      description,
+      isStarred,
       backgroundColor,
       gridType,
       gridStyle,
@@ -314,6 +321,14 @@ export const updateBoardSettings = async (req, res) => {
 
     if (title !== undefined && typeof title === 'string') {
       board.title = title.trim() || board.title;
+    }
+
+    if (description !== undefined && typeof description === 'string') {
+      board.description = description.trim();
+    }
+
+    if (isStarred !== undefined) {
+      board.isStarred = Boolean(isStarred);
     }
 
     if (backgroundColor !== undefined && typeof backgroundColor === 'string') {
@@ -335,6 +350,7 @@ export const updateBoardSettings = async (req, res) => {
 
     await board.save();
     await board.populate('owner', 'name email avatarColor');
+    await board.populate('members.user', 'name email avatarColor');
 
     return res.json({
       success: true,
@@ -343,6 +359,124 @@ export const updateBoardSettings = async (req, res) => {
   } catch (error) {
     console.error('Error in updateBoardSettings controller:', error);
     return res.status(500).json({ error: 'Failed to update board settings' });
+  }
+};
+
+/**
+ * POST /api/boards/:id/collaborators
+ * addCollaborator: Owner/Editor adds a teammate by email.
+ */
+export const addCollaborator = async (req, res) => {
+  try {
+    const board = req.board || (await Room.findById(req.params.id));
+    if (!board) {
+      return res.status(404).json({ error: 'Whiteboard not found' });
+    }
+
+    const { email, role = 'editor' } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Collaborator email is required' });
+    }
+
+    const normalizedRole = ['editor', 'viewer'].includes(role) ? role : 'editor';
+    const targetEmail = email.toLowerCase().trim();
+
+    let targetUser = await User.findOne({ email: targetEmail });
+    if (!targetUser) {
+      const defaultName = targetEmail.split('@')[0];
+      const colors = ['#7F1D3F', '#A63D57', '#0f766e', '#04b4a2', '#db2777', '#ea580c'];
+      const avatarColor = colors[Math.floor(Math.random() * colors.length)];
+      targetUser = await User.create({
+        name: defaultName,
+        email: targetEmail,
+        password: `invited_${Date.now()}`,
+        avatarColor,
+      });
+    }
+
+    const targetUserId = targetUser._id.toString();
+    const existingMember = board.members.find(
+      (m) => (m.user?._id ? m.user._id.toString() : m.user?.toString()) === targetUserId
+    );
+
+    if (existingMember) {
+      existingMember.role = normalizedRole;
+    } else {
+      board.members.push({
+        user: targetUser._id,
+        role: normalizedRole,
+        joinedAt: new Date(),
+      });
+    }
+
+    await board.save();
+    await board.populate('owner', 'name email avatarColor');
+    await board.populate('members.user', 'name email avatarColor');
+
+    return res.json({
+      success: true,
+      board,
+    });
+  } catch (error) {
+    console.error('Error in addCollaborator controller:', error);
+    return res.status(500).json({ error: 'Failed to add collaborator' });
+  }
+};
+
+/**
+ * POST /api/boards/:id/elements
+ * syncElements: Batch upserts elements for board synchronization.
+ */
+export const syncElements = async (req, res) => {
+  try {
+    const board = req.board || (await Room.findById(req.params.id));
+    if (!board) {
+      return res.status(404).json({ error: 'Whiteboard not found' });
+    }
+
+    const currentUserId = getUserId(req);
+    const { elements } = req.body;
+    if (!Array.isArray(elements)) {
+      return res.status(400).json({ error: 'Elements array is required' });
+    }
+
+    const ops = elements.map((elem, idx) => ({
+      updateOne: {
+        filter: { boardId: board._id, elementId: elem.id || elem.elementId || `el_${idx}` },
+        update: {
+          $set: {
+            boardId: board._id,
+            elementId: elem.id || elem.elementId || `el_${idx}`,
+            type: elem.type || 'stroke',
+            data: elem.data || elem,
+            zIndex: elem.zIndex || idx,
+            lastModifiedBy: currentUserId,
+            isDeleted: Boolean(elem.isDeleted),
+          },
+          $setOnInsert: {
+            createdBy: currentUserId,
+          },
+        },
+        upsert: true,
+      },
+    }));
+
+    if (ops.length > 0) {
+      await BoardElement.bulkWrite(ops);
+    }
+
+    const updatedElements = await BoardElement.find({
+      boardId: board._id,
+      isDeleted: false,
+    }).sort({ zIndex: 1, createdAt: 1 });
+
+    return res.json({
+      success: true,
+      elements: updatedElements,
+    });
+  } catch (error) {
+    console.error('Error in syncElements controller:', error);
+    return res.status(500).json({ error: 'Failed to sync elements' });
   }
 };
 
@@ -390,5 +524,7 @@ export default {
   getBoardDetails,
   updateMemberRole,
   updateBoardSettings,
+  addCollaborator,
+  syncElements,
   deleteBoard,
 };

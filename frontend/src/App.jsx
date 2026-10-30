@@ -114,24 +114,33 @@ function MainApp() {
   }, [user?.id]);
 
   const handleJoinRoomCode = useCallback(async (code) => {
+    const norm = code.replace(/[\s-]/g, '').toUpperCase();
     try {
-      const board = await boardApi.getBoardByRoomCode(code);
+      // First attempt to join by code to gain membership (FR-02, AC-01)
+      let joinRes = null;
+      try {
+        joinRes = await boardApi.joinBoard(norm);
+      } catch {
+        // Fall back to direct lookup if already a member or public
+      }
+
+      const board = joinRes?.board || (await boardApi.getBoardByRoomCode(norm));
       if (board) {
+        const boardId = board.id || board._id;
         setBoards((prev) => {
-          if (!prev.find((b) => b.id === board.id)) {
+          if (!prev.find((b) => (b.id || b._id) === boardId)) {
             return [board, ...prev];
           }
           return prev;
         });
-        setActiveBoardId(board.id);
+        setActiveBoardId(boardId);
       }
     } catch {
       // Look up locally
-      const norm = code.replace(/-/g, '').toUpperCase();
       setBoards((prev) => {
-        const match = prev.find((b) => b.roomCode.replace(/-/g, '') === norm);
+        const match = prev.find((b) => (b.roomCode || '').replace(/[\s-]/g, '') === norm);
         if (match) {
-          setActiveBoardId(match.id);
+          setActiveBoardId(match.id || match._id);
         } else {
           alert(`Room "${code}" not found. Please verify the 6-digit room code.`);
         }
@@ -168,7 +177,7 @@ function MainApp() {
     try {
       const newBoard = await boardApi.createBoard(boardData);
       setBoards((prev) => [newBoard, ...prev]);
-      setActiveBoardId(newBoard.id);
+      setActiveBoardId(newBoard.id || newBoard._id);
     } catch {
       // Local fallback
       const fallbackBoard = {
@@ -196,9 +205,9 @@ function MainApp() {
   const handleUpdateBoard = async (id, data) => {
     try {
       const updated = await boardApi.updateBoard(id, data);
-      setBoards((prev) => prev.map((b) => b.id === id ? { ...b, ...updated } : b));
+      setBoards((prev) => prev.map((b) => (b.id || b._id) === id ? { ...b, ...updated } : b));
     } catch {
-      setBoards((prev) => prev.map((b) => b.id === id ? { ...b, ...data } : b));
+      setBoards((prev) => prev.map((b) => (b.id || b._id) === id ? { ...b, ...data } : b));
     }
   };
 
@@ -209,31 +218,30 @@ function MainApp() {
       } catch {
         // Ignored
       }
-      setBoards((prev) => prev.filter((b) => b.id !== id));
+      setBoards((prev) => prev.filter((b) => (b.id || b._id) !== id));
       if (activeBoardId === id) setActiveBoardId(null);
     }
   };
 
   const handleToggleStar = async (id) => {
-    const target = boards.find((b) => b.id === id);
+    const target = boards.find((b) => (b.id || b._id) === id);
     if (target) {
       handleUpdateBoard(id, { isStarred: !target.isStarred });
     }
   };
 
-
   const handleAddCollaborator = async (boardId, email, role) => {
     try {
       const updatedBoard = await boardApi.addCollaborator(boardId, email, role);
-      setBoards((prev) => prev.map((b) => b.id === boardId ? updatedBoard : b));
-      if (shareModalBoard && shareModalBoard.id === boardId) {
+      setBoards((prev) => prev.map((b) => (b.id || b._id) === boardId ? updatedBoard : b));
+      if (shareModalBoard && (shareModalBoard.id || shareModalBoard._id) === boardId) {
         setShareModalBoard(updatedBoard);
       }
     } catch {
       // Local fallback
       setBoards((prev) =>
         prev.map((b) => {
-          if (b.id !== boardId) return b;
+          if ((b.id || b._id) !== boardId) return b;
           const updated = {
             ...b,
             collaborators: [
@@ -247,7 +255,7 @@ function MainApp() {
               }
             ]
           };
-          if (shareModalBoard && shareModalBoard.id === boardId) {
+          if (shareModalBoard && (shareModalBoard.id || shareModalBoard._id) === boardId) {
             setShareModalBoard(updated);
           }
           return updated;
@@ -277,7 +285,7 @@ function MainApp() {
     return <AuthPage onLoginSuccess={loadBoards} />;
   }
 
-  const activeBoard = boards.find((b) => b.id === activeBoardId);
+  const activeBoard = boards.find((b) => (b.id || b._id) === activeBoardId);
 
   // In active whiteboard workspace
   if (activeBoard) {

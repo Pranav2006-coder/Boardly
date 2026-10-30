@@ -25,6 +25,10 @@ function WhiteboardWorkspaceInner({
   onAddCollaborator
 }) {
   const { user } = useAuth();
+  const currentBoardId = board.id || board._id;
+  const [boardTitle, setBoardTitle] = useState(board.title || 'Untitled Whiteboard');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isViewOnly, setIsViewOnly] = useState(board.role === 'viewer' || board.userRole === 'viewer');
   const {
     isViewOnly,
     setIsViewOnly,
@@ -80,7 +84,7 @@ function WhiteboardWorkspaceInner({
     const socket = connectSocket();
 
     socket.emit('join_board', {
-      boardId: board.id,
+      boardId: currentBoardId,
       role: isViewOnly ? 'viewer' : 'editor',
       userName: user?.name,
       avatarColor: user?.avatarColor || '#7F1D3F'
@@ -129,7 +133,7 @@ function WhiteboardWorkspaceInner({
       socket.off('cursor_moved');
       socket.off('active_users_changed');
     };
-  }, [board.id, isViewOnly, user]);
+  }, [currentBoardId, isViewOnly, user]);
 
   // Push to history before mutating
   const pushHistory = useCallback(() => {
@@ -144,10 +148,10 @@ function WhiteboardWorkspaceInner({
       setCanUndo(historyRef.current.length > 0);
       setElements(prev);
       const socket = getSocket();
-      socket.emit('clear_board', { boardId: board.id });
-      prev.forEach(elem => socket.emit('element_created', { boardId: board.id, element: elem }));
+      socket.emit('clear_board', { boardId: currentBoardId });
+      prev.forEach(elem => socket.emit('element_created', { boardId: currentBoardId, element: elem }));
     }
-  }, [board.id]);
+  }, [currentBoardId]);
 
   // Broadcast cursor movements to socket
   const handleMouseMove = (e) => {
@@ -162,7 +166,7 @@ function WhiteboardWorkspaceInner({
     const socket = getSocket();
     if (socket && socket.connected) {
       socket.emit('cursor_move', {
-        boardId: board.id,
+        boardId: currentBoardId,
         x: canvasX,
         y: canvasY
       });
@@ -237,7 +241,7 @@ function WhiteboardWorkspaceInner({
         }
       };
       setElements((prev) => [...prev, newSticky]);
-      getSocket().emit('element_created', { boardId: board.id, element: newSticky });
+      getSocket().emit('element_created', { boardId: currentBoardId, element: newSticky });
       setActiveTool('select');
       setSelectedId(newSticky.id);
     } else if (activeTool === 'rect') {
@@ -255,7 +259,7 @@ function WhiteboardWorkspaceInner({
         fill: `${activeColor}15`
       };
       setElements((prev) => [...prev, newRect]);
-      getSocket().emit('element_created', { boardId: board.id, element: newRect });
+      getSocket().emit('element_created', { boardId: currentBoardId, element: newRect });
       setActiveTool('select');
       setSelectedId(newRect.id);
     } else if (activeTool === 'circle') {
@@ -271,7 +275,7 @@ function WhiteboardWorkspaceInner({
         fill: `${activeColor}15`
       };
       setElements((prev) => [...prev, newCircle]);
-      getSocket().emit('element_created', { boardId: board.id, element: newCircle });
+      getSocket().emit('element_created', { boardId: currentBoardId, element: newCircle });
       setActiveTool('select');
       setSelectedId(newCircle.id);
     } else if (activeTool === 'system') {
@@ -294,7 +298,7 @@ function WhiteboardWorkspaceInner({
         }
       };
       setElements((prev) => [...prev, newSystem]);
-      getSocket().emit('element_created', { boardId: board.id, element: newSystem });
+      getSocket().emit('element_created', { boardId: currentBoardId, element: newSystem });
       setActiveTool('select');
       setSelectedId(newSystem.id);
     } else if (activeTool === 'text') {
@@ -311,7 +315,7 @@ function WhiteboardWorkspaceInner({
           fontSize: 16
         };
         setElements((prev) => [...prev, newText]);
-        getSocket().emit('element_created', { boardId: board.id, element: newText });
+        getSocket().emit('element_created', { boardId: currentBoardId, element: newText });
       }
       setActiveTool('select');
     }
@@ -322,14 +326,14 @@ function WhiteboardWorkspaceInner({
 
     if (currentPath) {
       setElements((prev) => [...prev, currentPath]);
-      getSocket().emit('element_created', { boardId: board.id, element: currentPath });
+      getSocket().emit('element_created', { boardId: currentBoardId, element: currentPath });
       setCurrentPath(null);
     }
 
     if (draggingId) {
       const dragged = elements.find((e) => e.id === draggingId);
       if (dragged) {
-        getSocket().emit('element_updated', { boardId: board.id, element: dragged });
+        getSocket().emit('element_updated', { boardId: currentBoardId, element: dragged });
       }
       setDraggingId(null);
     }
@@ -345,9 +349,9 @@ function WhiteboardWorkspaceInner({
     if (!selectedId || isViewOnly) return;
     pushHistory();
     setElements((prev) => prev.filter(e => e.id !== selectedId));
-    getSocket().emit('element_deleted', { boardId: board.id, elementId: selectedId });
+    getSocket().emit('element_deleted', { boardId: currentBoardId, elementId: selectedId });
     setSelectedId(null);
-  }, [selectedId, isViewOnly, pushHistory, board.id]);
+  }, [selectedId, isViewOnly, pushHistory, currentBoardId]);
 
   // Keyboard shortcut listener
   useEffect(() => {
@@ -374,7 +378,7 @@ function WhiteboardWorkspaceInner({
   const handleSaveTitle = () => {
     setIsEditingTitle(false);
     if (boardTitle.trim() && onUpdateBoard) {
-      onUpdateBoard(board.id, { title: boardTitle.trim() });
+      onUpdateBoard(currentBoardId, { title: boardTitle.trim() });
     }
   };
 
@@ -506,7 +510,7 @@ function WhiteboardWorkspaceInner({
         onCursorsToggle={() => setShowCursors(!showCursors)}
         onClearBoard={() => {
           setElements([]);
-          getSocket().emit('clear_board', { boardId: board.id });
+          getSocket().emit('clear_board', { boardId: currentBoardId });
         }}
       />
 
@@ -803,12 +807,12 @@ function WhiteboardWorkspaceInner({
                       data: { ...elem.data, text }
                     };
                     setElements((prev) => prev.map(el => el.id === id ? updated : el));
-                    getSocket().emit('element_updated', { boardId: board.id, element: updated });
+                    getSocket().emit('element_updated', { boardId: currentBoardId, element: updated });
                   }}
                   onUpdateColor={(id, color) => {
                     const updated = { ...elem, color };
                     setElements((prev) => prev.map(el => el.id === id ? updated : el));
-                    getSocket().emit('element_updated', { boardId: board.id, element: updated });
+                    getSocket().emit('element_updated', { boardId: currentBoardId, element: updated });
                   }}
                   onDelete={handleDeleteSelected}
                 />

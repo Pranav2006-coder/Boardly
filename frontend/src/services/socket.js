@@ -1,6 +1,9 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_SERVER_URL = 'http://localhost:5000';
+// In development, the Vite server proxies /socket.io to http://localhost:5000
+const SOCKET_SERVER_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000');
 
 let socket = null;
 
@@ -12,7 +15,7 @@ export const getSocket = () => {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
     });
   }
   return socket;

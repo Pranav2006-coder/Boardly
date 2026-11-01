@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { getBounds, arrowHeadPoints } from '../../utils/math';
+import { getBounds, arrowHeadPoints, smoothPath } from '../../utils/math';
 
 const PAD = 6; // selection box padding in canvas px
 
@@ -68,10 +68,7 @@ const ElementRenderer = memo(function ElementRenderer({
   // ── Stroke (freehand pen) ────────────────────────────────────────────────
   if (elem.type === 'stroke') {
     if (!elem.points || elem.points.length < 2) return null;
-    const d = elem.points.reduce(
-      (acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`,
-      ''
-    );
+    const d = smoothPath(elem.points);
     return (
       <g>
         <path

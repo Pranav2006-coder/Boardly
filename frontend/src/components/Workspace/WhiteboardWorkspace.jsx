@@ -591,7 +591,7 @@ function WhiteboardWorkspaceInner({
         onMouseUp={handleMouseUp}
         onWheel={handleWheel}
         style={{ cursor: getCursor() }}
-        className={w-full h-full pt-16 relative overflow-hidden }
+        className="w-full h-full pt-16 relative overflow-hidden"
       >
         {/* SVG Canvas Background Grids (Bright & uncluttered with subtle neutral dots) */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">

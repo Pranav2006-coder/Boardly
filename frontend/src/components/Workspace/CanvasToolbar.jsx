@@ -25,6 +25,11 @@ export default function CanvasToolbar({
     { id: 'system', icon: 'schema', label: 'Architecture Card', shortcut: 'A' },
     { id: 'rect', icon: 'crop_square', label: 'Rectangle', shortcut: 'R' },
     { id: 'circle', icon: 'radio_button_unchecked', label: 'Circle', shortcut: 'C' },
+    { id: 'line', icon: 'horizontal_rule', label: 'Line', shortcut: 'L' },
+    { id: 'arrow', icon: 'arrow_forward', label: 'Arrow' },
+    { id: 'triangle', icon: 'change_history', label: 'Triangle' },
+    { id: 'diamond', icon: 'diamond', label: 'Diamond' },
+    { id: 'star', icon: 'star', label: 'Star' },
     { id: 'text', icon: <span className="font-bold text-sm">T</span>, label: 'Text', shortcut: 'T' },
   ];
 

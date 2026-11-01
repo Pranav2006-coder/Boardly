@@ -8,10 +8,10 @@ import CanvasToolbar from './CanvasToolbar';
 import ColorPicker from './ColorPicker';
 import RemoteCursor from './RemoteCursor';
 import StickyNote from './StickyNote';
-import ElementRenderer from './ElementRenderer';
+import CanvasStage from './CanvasStage';
 import { useCanvas } from '../../hooks/useCanvas';
 import { BoardProvider, useBoard } from '../../context/BoardContext';
-import { resolveFill, smoothPath } from '../../utils/math';
+import { resolveFill } from '../../utils/math';
 
 export default function WhiteboardWorkspace(props) {
   return (
@@ -84,6 +84,8 @@ function WhiteboardWorkspaceInner({
   // Real-Time Collaborators & Cursors
   const [collaborators, setCollaborators] = useState(board.collaborators || []);
   const [remoteCursors, setRemoteCursors] = useState({});
+  const [remoteStrokes, setRemoteStrokes] = useState({});
+  const remoteStrokeTimersRef = useRef({});
 
   const containerRef = useRef(null);
   const historyRef = useRef([]);
@@ -110,6 +112,16 @@ function WhiteboardWorkspaceInner({
 
     socket.on('element_created', (newElem) => {
       setElements((prev) => [...prev.filter(e => e.id !== newElem.id), newElem]);
+      setRemoteStrokes((prev) => {
+        if (!prev[newElem.id]) return prev;
+        const copy = { ...prev };
+        delete copy[newElem.id];
+        return copy;
+      });
+      if (remoteStrokeTimersRef.current[newElem.id]) {
+        clearTimeout(remoteStrokeTimersRef.current[newElem.id]);
+        delete remoteStrokeTimersRef.current[newElem.id];
+      }
     });
 
     socket.on('element_updated', (updatedElem) => {
@@ -122,6 +134,41 @@ function WhiteboardWorkspaceInner({
 
     socket.on('board_cleared', () => {
       setElements([]);
+      setRemoteStrokes({});
+      Object.values(remoteStrokeTimersRef.current).forEach(clearTimeout);
+      remoteStrokeTimersRef.current = {};
+    });
+
+    socket.on('stroke_chunk_received', (chunk) => {
+      if (!chunk || !chunk.strokeId) return;
+      const { strokeId, color, width, dashed, points } = chunk;
+      setRemoteStrokes((prev) => {
+        const existing = prev[strokeId];
+        const updatedPoints = existing ? [...existing.points, ...(points || [])] : (points || []);
+        return {
+          ...prev,
+          [strokeId]: {
+            id: strokeId,
+            color: color || existing?.color || '#111111',
+            width: width || existing?.width || 3,
+            dashed: dashed !== undefined ? dashed : existing?.dashed,
+            points: updatedPoints,
+          },
+        };
+      });
+
+      if (remoteStrokeTimersRef.current[strokeId]) {
+        clearTimeout(remoteStrokeTimersRef.current[strokeId]);
+      }
+      remoteStrokeTimersRef.current[strokeId] = setTimeout(() => {
+        setRemoteStrokes((prev) => {
+          if (!prev[strokeId]) return prev;
+          const copy = { ...prev };
+          delete copy[strokeId];
+          return copy;
+        });
+        delete remoteStrokeTimersRef.current[strokeId];
+      }, 3000);
     });
 
     socket.on('cursor_moved', ({ socketId, userName, avatarColor, x, y }) => {
@@ -143,6 +190,9 @@ function WhiteboardWorkspaceInner({
       socket.off('board_cleared');
       socket.off('cursor_moved');
       socket.off('active_users_changed');
+      socket.off('stroke_chunk_received');
+      Object.values(remoteStrokeTimersRef.current).forEach(clearTimeout);
+      remoteStrokeTimersRef.current = {};
     };
   }, [currentBoardId, isViewOnly, user, setElements]);
 
@@ -260,6 +310,21 @@ function WhiteboardWorkspaceInner({
     textInput,
     setTextInput,
   });
+
+  const getCursor = () => {
+    if (isViewOnly || canvasLocked) return 'not-allowed';
+    if (isPanning) return 'grabbing';
+    if (activeTool === 'select') return 'grab';
+    if (activeTool === 'text') return 'text';
+    if (
+      activeTool === 'pen' ||
+      activeTool === 'eraser' ||
+      ['rect', 'circle', 'line', 'arrow', 'triangle', 'diamond', 'star'].includes(activeTool)
+    ) {
+      return 'crosshair';
+    }
+    return 'default';
+  };
 
   const handleWheel = (e) => {
     e.preventDefault();
@@ -536,9 +601,8 @@ function WhiteboardWorkspaceInner({
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onWheel={handleWheel}
-        className={`w-full h-full pt-16 relative overflow-hidden cursor-${
-          isPanning ? 'grabbing' : activeTool === 'pen' ? 'crosshair' : 'default'
-        } ${canvasTheme === 'dark' ? 'bg-[#1C1917]' : 'bg-[#FAF6F2]'}`}
+        style={{ cursor: getCursor() }}
+        className={w-full h-full pt-16 relative overflow-hidden }
       >
         {/* SVG Canvas Background Grids (Bright & uncluttered with subtle neutral dots) */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">
@@ -624,94 +688,25 @@ function WhiteboardWorkspaceInner({
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           }}
         >
-          {/* SVG Strokes & Connectors Layer */}
-          <svg className="absolute inset-0 w-[5000px] h-[5000px] pointer-events-none overflow-visible">
-            <defs>
-              <marker id="arrow-elem-head" markerWidth="6" markerHeight="6" refX="6" refY="5" viewBox="0 0 10 10" orient="auto-start-reverse">
-                <path d="M 0 1 L 10 5 L 0 9 z" fill="inherit" />
-              </marker>
-            </defs>
-
-            {elements
-              .filter((e) =>
-                e.type === 'stroke' ||
-                e.type === 'curve' ||
-                e.type === 'line' ||
-                e.type === 'arrow' ||
-                e.type === 'triangle' ||
-                e.type === 'diamond' ||
-                e.type === 'star'
-              )
-              .map((elem) => (
-                <ElementRenderer
-                  key={elem.id}
-                  elem={elem}
-                  isSelected={selectedId === elem.id}
-                  activeTool={activeTool}
-                  isViewOnly={isViewOnly}
-                  canvasLocked={canvasLocked}
-                  onSelect={setSelectedId}
-                  onDragStart={(e, el) => {
-                    setDraggingId(el.id);
-                    const r = containerRef.current.getBoundingClientRect();
-                    const cX = (e.clientX - r.left - pan.x) / zoom;
-                    const cY = (e.clientY - r.top - pan.y) / zoom;
-                    setDragOffset({ x: cX - el.x, y: cY - el.y });
-                  }}
-                />
-              ))}
-
-            {/* Currently drawing stroke (live preview) */}
-            {currentPath && currentPath.points?.length > 1 && (
-              <path
-                d={smoothPath(currentPath.points)}
-                fill="none"
-                stroke={currentPath.color}
-                strokeWidth={currentPath.width}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={currentPath.dashed ? '6 6' : undefined}
-              />
-            )}
-
-            {/* Drag-to-draw shape preview */}
-            {draftShape && (
-              <g style={{ opacity: 0.5, pointerEvents: 'none' }}>
-                {['line', 'arrow', 'triangle', 'diamond', 'star'].includes(draftShape.type) ? (
-                  <ElementRenderer
-                    elem={draftShape}
-                    isSelected={false}
-                    activeTool="select"
-                    isViewOnly={true}
-                    canvasLocked={true}
-                    onSelect={() => {}}
-                    onDragStart={() => {}}
-                  />
-                ) : draftShape.type === 'rect' ? (
-                  <rect
-                    x={draftShape.x}
-                    y={draftShape.y}
-                    width={Math.max(0, draftShape.width)}
-                    height={Math.max(0, draftShape.height)}
-                    fill={draftShape.fill || 'none'}
-                    stroke={draftShape.stroke || '#7F1D3F'}
-                    strokeWidth={draftShape.strokeWidth || 2}
-                    strokeDasharray={draftShape.dashed ? '6 6' : undefined}
-                    rx={6}
-                  />
-                ) : draftShape.type === 'circle' ? (
-                  <circle
-                    cx={draftShape.x}
-                    cy={draftShape.y}
-                    r={Math.max(0, draftShape.radius)}
-                    fill={draftShape.fill || 'none'}
-                    stroke={draftShape.stroke || '#7F1D3F'}
-                    strokeWidth={draftShape.strokeWidth || 2}
-                  />
-                ) : null}
-              </g>
-            )}
-          </svg>
+          {/* SVG Strokes & Connectors Layer (CanvasStage) */}
+          <CanvasStage
+            elements={elements}
+            selectedId={selectedId}
+            activeTool={activeTool}
+            isViewOnly={isViewOnly}
+            canvasLocked={canvasLocked}
+            currentPath={currentPath}
+            draftShape={draftShape}
+            remoteStrokes={remoteStrokes}
+            onSelect={setSelectedId}
+            onDragStart={(e, el) => {
+              setDraggingId(el.id);
+              const r = containerRef.current.getBoundingClientRect();
+              const cX = (e.clientX - r.left - pan.x) / zoom;
+              const cY = (e.clientY - r.top - pan.y) / zoom;
+              setDragOffset({ x: cX - el.x, y: cY - el.y });
+            }}
+          />
 
           {/* Interactive Objects on Canvas */}
           {elements.map((elem) => {

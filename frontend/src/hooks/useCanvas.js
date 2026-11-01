@@ -1,4 +1,4 @@
-﻿import { useCallback } from 'react';
+﻿import { useCallback, useRef } from 'react';
 import { distance, smoothPath, isPointNearStroke, getBounds, resolveFill } from '../utils/math';
 
 /**
@@ -129,6 +129,9 @@ export function useCanvas({
   textInput,
   setTextInput,
 }) {
+  const lastCursorMoveRef = useRef({ time: 0, x: null, y: null });
+  const strokeChunkRef = useRef({ lastSentIndex: 0, lastSentTime: 0 });
+
   const handleMouseMove = useCallback((e) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -138,13 +141,20 @@ export function useCanvas({
     const canvasX = (clientX - pan.x) / zoom;
     const canvasY = (clientY - pan.y) / zoom;
 
-    const socket = getSocket();
-    if (socket && socket.connected) {
-      socket.emit('cursor_move', {
-        boardId: currentBoardId,
-        x: canvasX,
-        y: canvasY,
-      });
+    const now = Date.now();
+    if (
+      now - lastCursorMoveRef.current.time >= 25 &&
+      (lastCursorMoveRef.current.x !== canvasX || lastCursorMoveRef.current.y !== canvasY)
+    ) {
+      lastCursorMoveRef.current = { time: now, x: canvasX, y: canvasY };
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit('cursor_move', {
+          boardId: currentBoardId,
+          x: canvasX,
+          y: canvasY,
+        });
+      }
     }
 
     // Panning canvas with space or middle click or select drag
@@ -180,10 +190,33 @@ export function useCanvas({
 
       // Ignore points closer than 2 canvas px to previous point
       if (!lastPoint || distance(lastPoint, newPoint) >= 2) {
+        const nextPoints = [...prevPoints, newPoint];
         setCurrentPath((prev) => ({
           ...prev,
-          points: [...prev.points, newPoint],
+          points: nextPoints,
         }));
+
+        if (!isViewOnly && !canvasLocked) {
+          const chunkNow = Date.now();
+          if (chunkNow - strokeChunkRef.current.lastSentTime >= 50) {
+            const unsent = nextPoints.slice(strokeChunkRef.current.lastSentIndex);
+            if (unsent.length > 0) {
+              const socket = getSocket();
+              if (socket && socket.connected) {
+                socket.emit('draw_stroke_chunk', {
+                  boardId: currentBoardId,
+                  strokeId: currentPath.id,
+                  color: currentPath.color,
+                  width: currentPath.width,
+                  dashed: currentPath.dashed,
+                  points: unsent,
+                });
+                strokeChunkRef.current.lastSentIndex = nextPoints.length;
+                strokeChunkRef.current.lastSentTime = chunkNow;
+              }
+            }
+          }
+        }
       }
       return;
     }
@@ -301,6 +334,7 @@ export function useCanvas({
 
     if (activeTool === 'pen') {
       pushHistory();
+      strokeChunkRef.current = { lastSentIndex: 0, lastSentTime: Date.now() };
       setCurrentPath({
         id: `stroke-${Date.now()}`,
         type: 'stroke',
@@ -518,6 +552,24 @@ export function useCanvas({
         };
       }
 
+      if (!isViewOnly && !canvasLocked) {
+        const unsent = (finalPath.points || []).slice(strokeChunkRef.current.lastSentIndex);
+        if (unsent.length > 0) {
+          const socket = getSocket();
+          if (socket && socket.connected) {
+            socket.emit('draw_stroke_chunk', {
+              boardId: currentBoardId,
+              strokeId: finalPath.id,
+              color: finalPath.color,
+              width: finalPath.width,
+              dashed: finalPath.dashed,
+              points: unsent,
+            });
+          }
+        }
+        strokeChunkRef.current = { lastSentIndex: 0, lastSentTime: 0 };
+      }
+
       setElements((prev) => [...prev, finalPath]);
       getSocket().emit('element_created', { boardId: currentBoardId, element: finalPath });
       setCurrentPath(null);
@@ -549,6 +601,8 @@ export function useCanvas({
     draggingId,
     elements,
     setDraggingId,
+    isViewOnly,
+    canvasLocked,
   ]);
 
   return {

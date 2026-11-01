@@ -47,6 +47,9 @@ function WhiteboardWorkspaceInner({
     selectedId,
     setSelectedId,
   } = useBoard();
+  const [draftShape, setDraftShape] = useState(null);
+  const [textInput, setTextInput] = useState(null);
+  const textCommittedRef = useRef(false);
   const [boardTitle, setBoardTitle] = useState(board.title || 'Untitled Whiteboard');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -150,6 +153,41 @@ function WhiteboardWorkspaceInner({
     setCanUndo(true);
   }, [elements]);
 
+  useEffect(() => {
+    if (textInput) {
+      textCommittedRef.current = false;
+    }
+  }, [textInput]);
+
+  const commitText = useCallback((val) => {
+    if (textCommittedRef.current) return;
+    textCommittedRef.current = true;
+    const trimmed = (val || '').trim();
+    if (trimmed && textInput) {
+      pushHistory();
+      const newText = {
+        id: `text-${Date.now()}`,
+        type: 'text',
+        x: textInput.x,
+        y: textInput.y,
+        color: activeColor,
+        text: trimmed,
+        fontSize: 16,
+      };
+      setElements((prev) => [...prev, newText]);
+      getSocket().emit('element_created', { boardId: currentBoardId, element: newText });
+      setSelectedId(newText.id);
+    }
+    setTextInput(null);
+    setActiveTool('select');
+  }, [textInput, activeColor, pushHistory, setElements, currentBoardId, setSelectedId, setActiveTool]);
+
+  const cancelText = useCallback(() => {
+    textCommittedRef.current = true;
+    setTextInput(null);
+    setActiveTool('select');
+  }, [setActiveTool]);
+
   const handleUndo = useCallback(() => {
     if (isViewOnly) return;
     if (historyRef.current.length > 0) {
@@ -217,6 +255,10 @@ function WhiteboardWorkspaceInner({
     pushHistory,
     getSocket,
     eraserRadiusPx: 10,
+    draftShape,
+    setDraftShape,
+    textInput,
+    setTextInput,
   });
 
   const handleWheel = (e) => {
@@ -237,6 +279,16 @@ function WhiteboardWorkspaceInner({
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (e.key === 'Escape') {
+        if (draftShape) {
+          setDraftShape(null);
+        }
+        if (textInput) {
+          cancelText();
+        }
+        return;
+      }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (!isViewOnly) {
@@ -307,7 +359,7 @@ function WhiteboardWorkspaceInner({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleDeleteSelected, handleUndo, handleRedo, setActiveTool, isViewOnly]);
+  }, [handleDeleteSelected, handleUndo, handleRedo, setActiveTool, isViewOnly, draftShape, textInput, cancelText]);
 
   useEffect(() => {
     if (isViewOnly) {
@@ -621,6 +673,44 @@ function WhiteboardWorkspaceInner({
                 strokeDasharray={currentPath.dashed ? '6 6' : undefined}
               />
             )}
+
+            {/* Drag-to-draw shape preview */}
+            {draftShape && (
+              <g style={{ opacity: 0.5, pointerEvents: 'none' }}>
+                {['line', 'arrow', 'triangle', 'diamond', 'star'].includes(draftShape.type) ? (
+                  <ElementRenderer
+                    elem={draftShape}
+                    isSelected={false}
+                    activeTool="select"
+                    isViewOnly={true}
+                    canvasLocked={true}
+                    onSelect={() => {}}
+                    onDragStart={() => {}}
+                  />
+                ) : draftShape.type === 'rect' ? (
+                  <rect
+                    x={draftShape.x}
+                    y={draftShape.y}
+                    width={Math.max(0, draftShape.width)}
+                    height={Math.max(0, draftShape.height)}
+                    fill={draftShape.fill || 'none'}
+                    stroke={draftShape.stroke || '#7F1D3F'}
+                    strokeWidth={draftShape.strokeWidth || 2}
+                    strokeDasharray={draftShape.dashed ? '6 6' : undefined}
+                    rx={6}
+                  />
+                ) : draftShape.type === 'circle' ? (
+                  <circle
+                    cx={draftShape.x}
+                    cy={draftShape.y}
+                    r={Math.max(0, draftShape.radius)}
+                    fill={draftShape.fill || 'none'}
+                    stroke={draftShape.stroke || '#7F1D3F'}
+                    strokeWidth={draftShape.strokeWidth || 2}
+                  />
+                ) : null}
+              </g>
+            )}
           </svg>
 
           {/* Interactive Objects on Canvas */}
@@ -861,6 +951,43 @@ function WhiteboardWorkspaceInner({
 
             return null;
           })}
+
+          {/* Inline text tool input */}
+          {textInput && (
+            <div
+              style={{
+                transform: `translate(${textInput.x}px, ${textInput.y}px)`,
+              }}
+              className="absolute pointer-events-auto z-50"
+            >
+              <input
+                autoFocus
+                type="text"
+                placeholder="Type text label..."
+                defaultValue=""
+                style={{
+                  color: activeColor || '#292323',
+                  fontSize: '16px',
+                  background: canvasTheme === 'dark' ? '#1C1917' : '#FAF6F2',
+                  border: 'none',
+                  borderBottom: `2px solid ${activeColor || '#7F1D3F'}`,
+                }}
+                className="font-headline font-bold px-2 py-1 outline-none min-w-[140px] shadow-sm rounded-t"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitText(e.target.value);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelText();
+                  }
+                }}
+                onBlur={(e) => {
+                  commitText(e.target.value);
+                }}
+              />
+            </div>
+          )}
 
           {/* Live Collaborators Remote Cursors */}
           {showCursors &&

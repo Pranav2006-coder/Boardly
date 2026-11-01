@@ -12,6 +12,85 @@ import { distance, smoothPath, isPointNearStroke, getBounds, resolveFill } from 
  * @param {Object} deps
  * @returns {{ handleMouseDown: Function, handleMouseMove: Function, handleMouseUp: Function }}
  */
+const SHAPE_TOOLS = ['rect', 'circle', 'line', 'arrow', 'triangle', 'diamond', 'star'];
+
+function computeShapeGeometry(type, startX, startY, curX, curY, shiftKey) {
+  const dx = curX - startX;
+  const dy = curY - startY;
+
+  if (type === 'rect' || type === 'diamond') {
+    if (shiftKey) {
+      const side = Math.max(Math.abs(dx), Math.abs(dy));
+      const x = dx >= 0 ? startX : startX - side;
+      const y = dy >= 0 ? startY : startY - side;
+      return { x, y, width: side, height: side };
+    }
+    return {
+      x: Math.min(startX, curX),
+      y: Math.min(startY, curY),
+      width: Math.abs(dx),
+      height: Math.abs(dy),
+    };
+  }
+
+  if (type === 'circle') {
+    return {
+      x: startX,
+      y: startY,
+      radius: Math.round(Math.hypot(dx, dy)),
+    };
+  }
+
+  if (type === 'triangle' || type === 'star') {
+    const size = Math.max(Math.abs(dx), Math.abs(dy));
+    const x = dx >= 0 ? startX : startX - size;
+    const y = dy >= 0 ? startY : startY - size;
+    return { x, y, size };
+  }
+
+  if (type === 'line' || type === 'arrow') {
+    if (shiftKey) {
+      const angle = Math.atan2(dy, dx);
+      const snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+      const len = Math.hypot(dx, dy);
+      return {
+        x: startX,
+        y: startY,
+        x2: startX + len * Math.cos(snappedAngle),
+        y2: startY + len * Math.sin(snappedAngle),
+      };
+    }
+    return {
+      x: startX,
+      y: startY,
+      x2: curX,
+      y2: curY,
+    };
+  }
+
+  return {};
+}
+
+function getDefaultShapeGeometry(type, startX, startY) {
+  switch (type) {
+    case 'rect':
+      return { x: startX, y: startY, width: 200, height: 120 };
+    case 'circle':
+      return { x: startX, y: startY, radius: 60 };
+    case 'line':
+    case 'arrow':
+      return { x: startX, y: startY, x2: startX + 200, y2: startY };
+    case 'triangle':
+      return { x: startX, y: startY, size: 100 };
+    case 'diamond':
+      return { x: startX, y: startY, width: 160, height: 100 };
+    case 'star':
+      return { x: startX, y: startY, size: 60 };
+    default:
+      return {};
+  }
+}
+
 export function useCanvas({
   containerRef,
   pan,
@@ -45,6 +124,10 @@ export function useCanvas({
   pushHistory,
   getSocket,
   eraserRadiusPx = 10,
+  draftShape,
+  setDraftShape,
+  textInput,
+  setTextInput,
 }) {
   const handleMouseMove = useCallback((e) => {
     if (!containerRef.current) return;
@@ -70,6 +153,22 @@ export function useCanvas({
         x: e.clientX - startPan.x,
         y: e.clientY - startPan.y,
       });
+      return;
+    }
+
+    // Updating drag-to-draw shape draft
+    if (draftShape && !isViewOnly && !canvasLocked) {
+      const curX = snapToGrid ? Math.round(canvasX / 16) * 16 : canvasX;
+      const curY = snapToGrid ? Math.round(canvasY / 16) * 16 : canvasY;
+      const geo = computeShapeGeometry(
+        draftShape.type,
+        draftShape.startX,
+        draftShape.startY,
+        curX,
+        curY,
+        e.shiftKey
+      );
+      setDraftShape((prev) => (prev ? { ...prev, ...geo, curX, curY } : null));
       return;
     }
 
@@ -182,6 +281,8 @@ export function useCanvas({
     draggingId,
     snapToGrid,
     dragOffset,
+    draftShape,
+    setDraftShape,
   ]);
 
   const handleMouseDown = useCallback((e) => {
@@ -275,40 +376,6 @@ export function useCanvas({
       getSocket().emit('element_created', { boardId: currentBoardId, element: newSticky });
       setActiveTool('select');
       setSelectedId(newSticky.id);
-    } else if (activeTool === 'rect') {
-      pushHistory();
-      const newRect = {
-        id: `rect-${Date.now()}`,
-        type: 'rect',
-        x: canvasX,
-        y: canvasY,
-        width: 200,
-        height: 120,
-        stroke: activeColor,
-        strokeWidth,
-        dashed: isDashed,
-        fill: resolveFill(fillColor, activeColor),
-      };
-      setElements((prev) => [...prev, newRect]);
-      getSocket().emit('element_created', { boardId: currentBoardId, element: newRect });
-      setActiveTool('select');
-      setSelectedId(newRect.id);
-    } else if (activeTool === 'circle') {
-      pushHistory();
-      const newCircle = {
-        id: `circle-${Date.now()}`,
-        type: 'circle',
-        x: canvasX,
-        y: canvasY,
-        radius: 60,
-        stroke: activeColor,
-        strokeWidth,
-        fill: resolveFill(fillColor, activeColor),
-      };
-      setElements((prev) => [...prev, newCircle]);
-      getSocket().emit('element_created', { boardId: currentBoardId, element: newCircle });
-      setActiveTool('select');
-      setSelectedId(newCircle.id);
     } else if (activeTool === 'system') {
       pushHistory();
       const newSystem = {
@@ -333,108 +400,34 @@ export function useCanvas({
       setActiveTool('select');
       setSelectedId(newSystem.id);
     } else if (activeTool === 'text') {
-      pushHistory();
-      const textVal = window.prompt('Enter canvas text label:', 'New Architecture Component');
-      if (textVal) {
-        const newText = {
-          id: `text-${Date.now()}`,
-          type: 'text',
-          x: canvasX,
-          y: canvasY,
-          color: activeColor,
-          text: textVal,
-          fontSize: 16,
-        };
-        setElements((prev) => [...prev, newText]);
-        getSocket().emit('element_created', { boardId: currentBoardId, element: newText });
-      }
-      setActiveTool('select');
-    } else if (activeTool === 'line') {
-      pushHistory();
-      const newLine = {
-        id: `line-${Date.now()}`,
-        type: 'line',
-        x: canvasX,
-        y: canvasY,
-        x2: canvasX + 200,
-        y2: canvasY,
-        stroke: activeColor,
-        strokeWidth,
-        dashed: isDashed,
-      };
-      setElements((prev) => [...prev, newLine]);
-      getSocket().emit('element_created', { boardId: currentBoardId, element: newLine });
-      setActiveTool('select');
-      setSelectedId(newLine.id);
-    } else if (activeTool === 'arrow') {
-      pushHistory();
-      const newArrow = {
-        id: `arrow-${Date.now()}`,
-        type: 'arrow',
-        x: canvasX,
-        y: canvasY,
-        x2: canvasX + 200,
-        y2: canvasY,
-        stroke: activeColor,
-        strokeWidth,
-        dashed: isDashed,
-      };
-      setElements((prev) => [...prev, newArrow]);
-      getSocket().emit('element_created', { boardId: currentBoardId, element: newArrow });
-      setActiveTool('select');
-      setSelectedId(newArrow.id);
-    } else if (activeTool === 'triangle') {
-      pushHistory();
-      const newTriangle = {
-        id: `triangle-${Date.now()}`,
-        type: 'triangle',
-        x: canvasX,
-        y: canvasY,
-        size: 100,
+      if (textInput) return;
+      setTextInput({
+        x: snapToGrid ? Math.round(canvasX / 16) * 16 : canvasX,
+        y: snapToGrid ? Math.round(canvasY / 16) * 16 : canvasY,
+      });
+    } else if (SHAPE_TOOLS.includes(activeTool)) {
+      const startX = snapToGrid ? Math.round(canvasX / 16) * 16 : canvasX;
+      const startY = snapToGrid ? Math.round(canvasY / 16) * 16 : canvasY;
+      const initialDraft = {
+        type: activeTool,
+        startX,
+        startY,
+        x: startX,
+        y: startY,
+        x2: startX,
+        y2: startY,
+        width: 0,
+        height: 0,
+        radius: 0,
+        size: 0,
+        curX: startX,
+        curY: startY,
         stroke: activeColor,
         strokeWidth,
         dashed: isDashed,
         fill: resolveFill(fillColor, activeColor),
       };
-      setElements((prev) => [...prev, newTriangle]);
-      getSocket().emit('element_created', { boardId: currentBoardId, element: newTriangle });
-      setActiveTool('select');
-      setSelectedId(newTriangle.id);
-    } else if (activeTool === 'diamond') {
-      pushHistory();
-      const newDiamond = {
-        id: `diamond-${Date.now()}`,
-        type: 'diamond',
-        x: canvasX,
-        y: canvasY,
-        width: 160,
-        height: 100,
-        stroke: activeColor,
-        strokeWidth,
-        dashed: isDashed,
-        fill: resolveFill(fillColor, activeColor),
-      };
-      setElements((prev) => [...prev, newDiamond]);
-      getSocket().emit('element_created', { boardId: currentBoardId, element: newDiamond });
-      setActiveTool('select');
-      setSelectedId(newDiamond.id);
-    } else if (activeTool === 'star') {
-      pushHistory();
-      const newStar = {
-        id: `star-${Date.now()}`,
-        type: 'star',
-        x: canvasX,
-        y: canvasY,
-        size: 60,
-        stroke: activeColor,
-        strokeWidth,
-        dashed: isDashed,
-        fill: resolveFill(fillColor, activeColor),
-      };
-      setElements((prev) => [...prev, newStar]);
-      getSocket().emit('element_created', { boardId: currentBoardId, element: newStar });
-      setActiveTool('select');
-      setSelectedId(newStar.id);
+      setDraftShape(initialDraft);
     }
   }, [
     canvasLocked,
@@ -461,10 +454,58 @@ export function useCanvas({
     user,
     setActiveTool,
     fillColor,
+    textInput,
+    setTextInput,
+    setDraftShape,
   ]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e) => {
     setIsPanning(false);
+
+    if (draftShape) {
+      let curX = draftShape.startX;
+      let curY = draftShape.startY;
+      if (containerRef.current && e) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const cX = (e.clientX - rect.left - pan.x) / zoom;
+        const cY = (e.clientY - rect.top - pan.y) / zoom;
+        curX = snapToGrid ? Math.round(cX / 16) * 16 : cX;
+        curY = snapToGrid ? Math.round(cY / 16) * 16 : cY;
+      } else if (draftShape.curX !== undefined && draftShape.curY !== undefined) {
+        curX = draftShape.curX;
+        curY = draftShape.curY;
+      }
+
+      const dragDist = Math.hypot(curX - draftShape.startX, curY - draftShape.startY);
+      const isDrag = dragDist >= 4;
+      const geo = isDrag
+        ? computeShapeGeometry(draftShape.type, draftShape.startX, draftShape.startY, curX, curY, e?.shiftKey)
+        : getDefaultShapeGeometry(draftShape.type, draftShape.startX, draftShape.startY);
+
+      const type = draftShape.type;
+      const newElem = {
+        id: `${type}-${Date.now()}`,
+        type,
+        ...geo,
+        stroke: draftShape.stroke,
+        strokeWidth: draftShape.strokeWidth,
+      };
+
+      if (type === 'rect' || type === 'line' || type === 'arrow' || type === 'triangle' || type === 'diamond' || type === 'star') {
+        newElem.dashed = draftShape.dashed;
+      }
+      if (type === 'rect' || type === 'circle' || type === 'triangle' || type === 'diamond' || type === 'star') {
+        newElem.fill = draftShape.fill;
+      }
+
+      pushHistory();
+      setElements((prev) => [...prev, newElem]);
+      getSocket().emit('element_created', { boardId: currentBoardId, element: newElem });
+      setSelectedId(newElem.id);
+      setActiveTool('select');
+      setDraftShape(null);
+      return;
+    }
 
     if (currentPath) {
       let finalPath = currentPath;
@@ -491,10 +532,19 @@ export function useCanvas({
     }
   }, [
     setIsPanning,
-    currentPath,
+    draftShape,
+    containerRef,
+    pan,
+    zoom,
+    snapToGrid,
+    pushHistory,
     setElements,
     getSocket,
     currentBoardId,
+    setSelectedId,
+    setActiveTool,
+    setDraftShape,
+    currentPath,
     setCurrentPath,
     draggingId,
     elements,

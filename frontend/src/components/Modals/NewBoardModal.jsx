@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Modal, Input, Button } from '../common';
 
 /**
@@ -14,15 +14,18 @@ export default function NewBoardModal({ isOpen, onClose, onCreateBoard }) {
   const [isPublic, setIsPublic] = useState(true);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (isOpen) {
-      setTitle('');
-      setDescription('');
-      setTemplate('blank');
-      setGridStyle('dots');
-      setIsPublic(true);
-    }
-  }, [isOpen]);
+  const resetForm = () => {
+    setTitle('');
+    setDescription('');
+    setTemplate('blank');
+    setGridStyle('dots');
+    setIsPublic(true);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -37,6 +40,7 @@ export default function NewBoardModal({ isOpen, onClose, onCreateBoard }) {
       isPublic,
     });
     setLoading(false);
+    resetForm();
     onClose();
   };
 
@@ -56,7 +60,7 @@ export default function NewBoardModal({ isOpen, onClose, onCreateBoard }) {
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title="Create New Whiteboard"
       subtitle="Start a new space for your ideas, architecture, and team collaboration."
       maxWidth="md"
@@ -170,7 +174,7 @@ export default function NewBoardModal({ isOpen, onClose, onCreateBoard }) {
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E8DDD8]">
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={handleClose}>
             Cancel
           </Button>
           <Button

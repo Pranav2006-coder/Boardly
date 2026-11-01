@@ -121,7 +121,7 @@ export function useCanvas({
   snapToGrid,
   user,
   currentBoardId,
-  pushHistory,
+  pushAction,
   getSocket,
   eraserRadiusPx = 10,
   draftShape,
@@ -131,6 +131,8 @@ export function useCanvas({
 }) {
   const lastCursorMoveRef = useRef({ time: 0, x: null, y: null });
   const strokeChunkRef = useRef({ lastSentIndex: 0, lastSentTime: 0 });
+  const dragInitialElementRef = useRef(null);
+  const erasedElementsRef = useRef([]);
 
   const handleMouseMove = useCallback((e) => {
     if (!containerRef.current) return;
@@ -260,7 +262,10 @@ export function useCanvas({
       }
 
       if (toRemove.length > 0) {
-        pushHistory();
+        const removedElements = elements.filter((el) => toRemove.includes(el.id));
+        const alreadyErased = new Set(erasedElementsRef.current.map((el) => el.id));
+        const newlyRemoved = removedElements.filter((el) => !alreadyErased.has(el.id));
+        erasedElementsRef.current.push(...newlyRemoved);
         setElements((prev) => prev.filter((el) => !toRemove.includes(el.id)));
         const sock = getSocket();
         for (const id of toRemove) {
@@ -275,6 +280,12 @@ export function useCanvas({
 
     // Dragging an element
     if (draggingId && !isViewOnly && !canvasLocked) {
+      if (!dragInitialElementRef.current) {
+        const found = elements.find((e) => e.id === draggingId);
+        if (found) {
+          dragInitialElementRef.current = JSON.parse(JSON.stringify(found));
+        }
+      }
       const snappedX = snapToGrid ? Math.round((canvasX - dragOffset.x) / 16) * 16 : canvasX - dragOffset.x;
       const snappedY = snapToGrid ? Math.round((canvasY - dragOffset.y) / 16) * 16 : canvasY - dragOffset.y;
 
@@ -305,7 +316,7 @@ export function useCanvas({
     canvasLocked,
     elements,
     eraserRadiusPx,
-    pushHistory,
+    pushAction,
     setElements,
     getSocket,
     currentBoardId,
@@ -333,7 +344,6 @@ export function useCanvas({
     const canvasY = (e.clientY - rect.top - pan.y) / zoom;
 
     if (activeTool === 'pen') {
-      pushHistory();
       strokeChunkRef.current = { lastSentIndex: 0, lastSentTime: Date.now() };
       setCurrentPath({
         id: `stroke-${Date.now()}`,
@@ -344,6 +354,7 @@ export function useCanvas({
         points: [{ x: canvasX, y: canvasY }],
       });
     } else if (activeTool === 'eraser') {
+      erasedElementsRef.current = [];
       const erasePoint = { x: canvasX, y: canvasY };
       const toRemove = [];
 
@@ -381,7 +392,8 @@ export function useCanvas({
       }
 
       if (toRemove.length > 0) {
-        pushHistory();
+        const removedElements = elements.filter((el) => toRemove.includes(el.id));
+        erasedElementsRef.current.push(...removedElements);
         setElements((prev) => prev.filter((el) => !toRemove.includes(el.id)));
         const sock = getSocket();
         for (const id of toRemove) {
@@ -392,7 +404,6 @@ export function useCanvas({
         }
       }
     } else if (activeTool === 'sticky') {
-      pushHistory();
       const newSticky = {
         id: `sticky-${Date.now()}`,
         type: 'sticky',
@@ -408,10 +419,10 @@ export function useCanvas({
       };
       setElements((prev) => [...prev, newSticky]);
       getSocket().emit('element_created', { boardId: currentBoardId, element: newSticky });
+      pushAction({ type: 'create', after: newSticky });
       setActiveTool('select');
       setSelectedId(newSticky.id);
     } else if (activeTool === 'system') {
-      pushHistory();
       const newSystem = {
         id: `sys-${Date.now()}`,
         type: 'system-node',
@@ -431,6 +442,7 @@ export function useCanvas({
       };
       setElements((prev) => [...prev, newSystem]);
       getSocket().emit('element_created', { boardId: currentBoardId, element: newSystem });
+      pushAction({ type: 'create', after: newSystem });
       setActiveTool('select');
       setSelectedId(newSystem.id);
     } else if (activeTool === 'text') {
@@ -472,7 +484,7 @@ export function useCanvas({
     setIsPanning,
     isViewOnly,
     zoom,
-    pushHistory,
+    pushAction,
     setCurrentPath,
     activeColor,
     strokeWidth,
@@ -532,9 +544,9 @@ export function useCanvas({
         newElem.fill = draftShape.fill;
       }
 
-      pushHistory();
       setElements((prev) => [...prev, newElem]);
       getSocket().emit('element_created', { boardId: currentBoardId, element: newElem });
+      pushAction({ type: 'create', after: newElem });
       setSelectedId(newElem.id);
       setActiveTool('select');
       setDraftShape(null);
@@ -572,14 +584,38 @@ export function useCanvas({
 
       setElements((prev) => [...prev, finalPath]);
       getSocket().emit('element_created', { boardId: currentBoardId, element: finalPath });
+      pushAction({ type: 'create', after: finalPath });
       setCurrentPath(null);
+    }
+
+    if (erasedElementsRef.current.length > 0) {
+      pushAction({
+        type: 'batch',
+        actions: erasedElementsRef.current.map((el) => ({ type: 'delete', before: el })),
+      });
+      erasedElementsRef.current = [];
     }
 
     if (draggingId) {
       const dragged = elements.find((e) => e.id === draggingId);
       if (dragged) {
         getSocket().emit('element_updated', { boardId: currentBoardId, element: dragged });
+        const before = dragInitialElementRef.current;
+        if (
+          before &&
+          (before.x !== dragged.x ||
+            before.y !== dragged.y ||
+            before.x2 !== dragged.x2 ||
+            before.y2 !== dragged.y2)
+        ) {
+          pushAction({
+            type: 'update',
+            before,
+            after: JSON.parse(JSON.stringify(dragged)),
+          });
+        }
       }
+      dragInitialElementRef.current = null;
       setDraggingId(null);
     }
   }, [
@@ -589,7 +625,7 @@ export function useCanvas({
     pan,
     zoom,
     snapToGrid,
-    pushHistory,
+    pushAction,
     setElements,
     getSocket,
     currentBoardId,

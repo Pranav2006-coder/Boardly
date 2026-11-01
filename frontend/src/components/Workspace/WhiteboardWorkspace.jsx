@@ -10,6 +10,7 @@ import RemoteCursor from './RemoteCursor';
 import StickyNote from './StickyNote';
 import CanvasStage from './CanvasStage';
 import { useCanvas } from '../../hooks/useCanvas';
+import { useUndoRedo } from '../../hooks/useUndoRedo';
 import { BoardProvider, useBoard } from '../../context/BoardContext';
 import { resolveFill } from '../../utils/math';
 
@@ -88,8 +89,6 @@ function WhiteboardWorkspaceInner({
   const remoteStrokeTimersRef = useRef({});
 
   const containerRef = useRef(null);
-  const historyRef = useRef([]);
-  const [canUndo, setCanUndo] = useState(false);
 
 
   // Socket.IO Connection & Events
@@ -196,12 +195,12 @@ function WhiteboardWorkspaceInner({
     };
   }, [currentBoardId, isViewOnly, user, setElements]);
 
-  // Push to history before mutating
-  const pushHistory = useCallback(() => {
-    historyRef.current.push(JSON.parse(JSON.stringify(elements)));
-    if (historyRef.current.length > 20) historyRef.current.shift();
-    setCanUndo(true);
-  }, [elements]);
+  const { pushAction, undo, redo, canUndo, canRedo, clearHistory } = useUndoRedo({
+    boardId: currentBoardId,
+    setElements,
+    getSocket,
+    isViewOnly,
+  });
 
   useEffect(() => {
     if (textInput) {
@@ -214,7 +213,6 @@ function WhiteboardWorkspaceInner({
     textCommittedRef.current = true;
     const trimmed = (val || '').trim();
     if (trimmed && textInput) {
-      pushHistory();
       const newText = {
         id: `text-${Date.now()}`,
         type: 'text',
@@ -226,36 +224,18 @@ function WhiteboardWorkspaceInner({
       };
       setElements((prev) => [...prev, newText]);
       getSocket().emit('element_created', { boardId: currentBoardId, element: newText });
+      pushAction({ type: 'create', after: newText });
       setSelectedId(newText.id);
     }
     setTextInput(null);
     setActiveTool('select');
-  }, [textInput, activeColor, pushHistory, setElements, currentBoardId, setSelectedId, setActiveTool]);
+  }, [textInput, activeColor, pushAction, setElements, currentBoardId, setSelectedId, setActiveTool]);
 
   const cancelText = useCallback(() => {
     textCommittedRef.current = true;
     setTextInput(null);
     setActiveTool('select');
   }, [setActiveTool]);
-
-  const handleUndo = useCallback(() => {
-    if (isViewOnly) return;
-    if (historyRef.current.length > 0) {
-      const prev = historyRef.current.pop();
-      setCanUndo(historyRef.current.length > 0);
-      setElements(prev);
-      const socket = getSocket();
-      socket.emit('clear_board', { boardId: currentBoardId });
-      prev.forEach(elem => socket.emit('element_created', { boardId: currentBoardId, element: elem }));
-    }
-  }, [currentBoardId, isViewOnly, setElements]);
-
-  // Placeholder for redo (TODO: useUndoRedo will implement it)
-  const canRedo = false;
-  const handleRedo = useCallback(() => {
-    if (isViewOnly) return;
-    // no-op, TODO: useUndoRedo will implement it
-  }, [isViewOnly]);
 
   // Placeholder for export (TODO: exportPng.js)
   const handleExport = useCallback(() => {
@@ -266,10 +246,16 @@ function WhiteboardWorkspaceInner({
   const handleClearBoard = useCallback(() => {
     if (isViewOnly || canvasLocked) return;
     if (window.confirm('Clear the whole board for everyone?')) {
+      if (elements.length > 0) {
+        pushAction({
+          type: 'batch',
+          actions: elements.map((el) => ({ type: 'delete', before: el })),
+        });
+      }
       setElements([]);
       getSocket().emit('clear_board', { boardId: currentBoardId });
     }
-  }, [isViewOnly, canvasLocked, currentBoardId, setElements]);
+  }, [isViewOnly, canvasLocked, elements, pushAction, currentBoardId, setElements]);
 
   // Canvas mouse handlers hook
   const { handleMouseDown, handleMouseMove, handleMouseUp } = useCanvas({
@@ -302,7 +288,7 @@ function WhiteboardWorkspaceInner({
     snapToGrid,
     user,
     currentBoardId,
-    pushHistory,
+    pushAction,
     getSocket,
     eraserRadiusPx: 10,
     draftShape,
@@ -334,11 +320,14 @@ function WhiteboardWorkspaceInner({
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedId || isViewOnly) return;
-    pushHistory();
+    const toDelete = elements.find((e) => e.id === selectedId);
+    if (toDelete) {
+      pushAction({ type: 'delete', before: toDelete });
+    }
     setElements((prev) => prev.filter(e => e.id !== selectedId));
     getSocket().emit('element_deleted', { boardId: currentBoardId, elementId: selectedId });
     setSelectedId(null);
-  }, [selectedId, isViewOnly, pushHistory, currentBoardId, setElements, setSelectedId]);
+  }, [selectedId, isViewOnly, elements, pushAction, currentBoardId, setElements, setSelectedId]);
 
   // Keyboard shortcut listener
   useEffect(() => {
@@ -369,14 +358,14 @@ function WhiteboardWorkspaceInner({
         if (key === 'y' || (e.shiftKey && key === 'z')) {
           e.preventDefault();
           if (!isViewOnly) {
-            handleRedo();
+            redo();
           }
           return;
         }
         if (key === 'z' && !e.shiftKey) {
           e.preventDefault();
           if (!isViewOnly) {
-            handleUndo();
+            undo();
           }
           return;
         }
@@ -424,7 +413,7 @@ function WhiteboardWorkspaceInner({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleDeleteSelected, handleUndo, handleRedo, setActiveTool, isViewOnly, draftShape, textInput, cancelText]);
+  }, [handleDeleteSelected, undo, redo, setActiveTool, isViewOnly, draftShape, textInput, cancelText]);
 
   useEffect(() => {
     if (isViewOnly) {
@@ -655,7 +644,7 @@ function WhiteboardWorkspaceInner({
         {/* Quick Canvas Action Pill (Top Right) */}
         <div className="absolute top-20 right-6 z-20 hidden md:flex items-center gap-1 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full shadow-[0_4px_16px_rgba(41,35,35,0.06)] border border-[#E8DDD8]">
           <button
-            onClick={handleUndo}
+            onClick={undo}
             className="px-2 py-0.5 text-[#786C6C] hover:text-[#292323] text-xs rounded-full hover:bg-[#FAF6F2] transition-colors flex items-center gap-1"
           >
             <span className="material-symbols-outlined text-[14px]">undo</span> Undo
@@ -830,11 +819,13 @@ function WhiteboardWorkspaceInner({
                       ...elem,
                       data: { ...elem.data, text }
                     };
+                    pushAction({ type: 'update', before: elem, after: updated });
                     setElements((prev) => prev.map(el => el.id === id ? updated : el));
                     getSocket().emit('element_updated', { boardId: currentBoardId, element: updated });
                   }}
                   onUpdateColor={(id, color) => {
                     const updated = { ...elem, color };
+                    pushAction({ type: 'update', before: elem, after: updated });
                     setElements((prev) => prev.map(el => el.id === id ? updated : el));
                     getSocket().emit('element_updated', { boardId: currentBoardId, element: updated });
                   }}
@@ -1020,10 +1011,10 @@ function WhiteboardWorkspaceInner({
         onSelectTool={setActiveTool}
         selectedId={selectedId}
         onDeleteSelected={handleDeleteSelected}
-        onUndo={handleUndo}
+        onUndo={undo}
         canUndo={canUndo}
         isViewOnly={isViewOnly}
-        onRedo={handleRedo}
+        onRedo={redo}
         canRedo={canRedo}
         onClear={handleClearBoard}
         onExport={handleExport}

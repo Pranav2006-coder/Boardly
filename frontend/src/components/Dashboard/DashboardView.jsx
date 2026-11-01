@@ -35,10 +35,16 @@ export default function DashboardView({
     }
   };
 
+  const currentUserId = user?.id || user?._id;
+  const isOwner = (b) => {
+    const creator = b.createdBy || b.owner?._id || b.owner?.id || b.owner;
+    return creator && currentUserId && creator.toString() === currentUserId.toString();
+  };
+
   const filteredBoards = boards
     .filter((b) => {
       if (activeTab === 'starred' && !b.isStarred) return false;
-      if (activeTab === 'shared' && b.createdBy === user?.id) return false;
+      if (activeTab === 'shared' && isOwner(b)) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
@@ -58,12 +64,12 @@ export default function DashboardView({
     {
       id: 'my',
       label: 'My Whiteboards',
-      count: boards.filter((b) => b.createdBy === user?.id || b.isPublic).length,
+      count: boards.filter((b) => isOwner(b) || b.isPublic).length,
     },
     {
       id: 'shared',
       label: 'Shared with Me',
-      count: boards.filter((b) => b.createdBy !== user?.id).length,
+      count: boards.filter((b) => !isOwner(b)).length,
     },
     {
       id: 'starred',
@@ -446,90 +452,96 @@ export default function DashboardView({
             ) : viewMode === 'list' ? (
               /* List view */
               <div className="flex flex-col gap-2">
-                {filteredBoards.map((board, idx) => (
-                  <div
-                    key={board.id}
-                    onClick={() => onOpenBoard(board.id)}
-                    className="group bg-white border border-[#E8DDD8] hover:border-[#7F1D3F] rounded-2xl px-5 py-3.5 flex items-center gap-4 cursor-pointer hover:shadow-[0_4px_16px_rgba(127,29,63,0.08)] transition-all duration-200 animate-fade-in-up"
-                    style={{ animationDelay: `${idx * 40}ms`, opacity: 0, animationFillMode: 'forwards' }}
-                  >
-                    {/* Coloured accent strip */}
+                {filteredBoards.map((board, idx) => {
+                  const bId = board.id || board._id;
+                  return (
                     <div
-                      className="w-1.5 h-12 rounded-full shrink-0"
-                      style={{ backgroundColor: board.isStarred ? '#7F1D3F' : '#E8DDD8' }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-headline font-bold text-sm text-[#292323] group-hover:text-[#7F1D3F] transition-colors truncate">
-                          {board.title}
-                        </h4>
-                        {board.isStarred && (
-                          <span className="material-symbols-outlined text-[14px] text-[#7F1D3F] shrink-0">star</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-[#786C6C] truncate mt-0.5">{board.description || 'Collaborative whiteboard canvas'}</p>
-                    </div>
-                    <div className="hidden sm:flex items-center -space-x-1.5 shrink-0">
-                      {board.collaborators?.slice(0, 3).map((c, i) => (
-                        <div
-                          key={i}
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold ring-2 ring-white shadow-xs"
-                          style={{ backgroundColor: c.avatarColor || '#7F1D3F' }}
-                          title={c.name}
-                        >
-                          {c.name?.[0]?.toUpperCase() || 'U'}
+                      key={bId}
+                      onClick={() => onOpenBoard(bId)}
+                      className="group bg-white border border-[#E8DDD8] hover:border-[#7F1D3F] rounded-2xl px-5 py-3.5 flex items-center gap-4 cursor-pointer hover:shadow-[0_4px_16px_rgba(127,29,63,0.08)] transition-all duration-200 animate-fade-in-up"
+                      style={{ animationDelay: `${idx * 40}ms`, opacity: 0, animationFillMode: 'forwards' }}
+                    >
+                      {/* Coloured accent strip */}
+                      <div
+                        className="w-1.5 h-12 rounded-full shrink-0"
+                        style={{ backgroundColor: board.isStarred ? '#7F1D3F' : '#E8DDD8' }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-headline font-bold text-sm text-[#292323] group-hover:text-[#7F1D3F] transition-colors truncate">
+                            {board.title}
+                          </h4>
+                          {board.isStarred && (
+                            <span className="material-symbols-outlined text-[14px] text-[#7F1D3F] shrink-0">star</span>
+                          )}
                         </div>
-                      ))}
+                        <p className="text-xs text-[#786C6C] truncate mt-0.5">{board.description || 'Collaborative whiteboard canvas'}</p>
+                      </div>
+                      <div className="hidden sm:flex items-center -space-x-1.5 shrink-0">
+                        {board.collaborators?.slice(0, 3).map((c, i) => (
+                          <div
+                            key={i}
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold ring-2 ring-white shadow-xs"
+                            style={{ backgroundColor: c.avatarColor || '#7F1D3F' }}
+                            title={c.name}
+                          >
+                            {c.name?.[0]?.toUpperCase() || 'U'}
+                          </div>
+                        ))}
+                      </div>
+                      <span className="text-[11px] text-[#786C6C] font-mono shrink-0 hidden md:block">
+                        {board.roomCode}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => onShareBoard(board)}
+                          className="w-8 h-8 rounded-lg text-[#786C6C] hover:text-[#7F1D3F] hover:bg-[#FFF8F0] flex items-center justify-center transition-colors"
+                          title="Share"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">share</span>
+                        </button>
+                        <button
+                          onClick={() => onToggleStar(bId)}
+                          className="w-8 h-8 rounded-lg text-[#786C6C] hover:text-[#7F1D3F] hover:bg-[#FFF8F0] flex items-center justify-center transition-colors"
+                          title={board.isStarred ? 'Unstar' : 'Star'}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">
+                            {board.isStarred ? 'star' : 'star_border'}
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => onDeleteBoard(bId)}
+                          className="w-8 h-8 rounded-lg text-[#786C6C] hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors"
+                          title="Delete"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-[11px] text-[#786C6C] font-mono shrink-0 hidden md:block">
-                      {board.roomCode}
-                    </span>
-                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => onShareBoard(board)}
-                        className="w-8 h-8 rounded-lg text-[#786C6C] hover:text-[#7F1D3F] hover:bg-[#FFF8F0] flex items-center justify-center transition-colors"
-                        title="Share"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">share</span>
-                      </button>
-                      <button
-                        onClick={() => onToggleStar(board.id)}
-                        className="w-8 h-8 rounded-lg text-[#786C6C] hover:text-[#7F1D3F] hover:bg-[#FFF8F0] flex items-center justify-center transition-colors"
-                        title={board.isStarred ? 'Unstar' : 'Star'}
-                      >
-                        <span className="material-symbols-outlined text-[16px]">
-                          {board.isStarred ? 'star' : 'star_border'}
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => onDeleteBoard(board.id)}
-                        className="w-8 h-8 rounded-lg text-[#786C6C] hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors"
-                        title="Delete"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">delete</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               /* Grid view */
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredBoards.map((board, idx) => (
-                  <div
-                    key={board.id}
-                    className="animate-fade-in-up"
-                    style={{ animationDelay: `${idx * 50}ms`, opacity: 0, animationFillMode: 'forwards' }}
-                  >
-                    <BoardCard
-                      board={board}
-                      onOpen={() => onOpenBoard(board.id)}
-                      onToggleStar={() => onToggleStar(board.id)}
-                      onShare={() => onShareBoard(board)}
-                      onDelete={() => onDeleteBoard(board.id)}
-                    />
-                  </div>
-                ))}
+                {filteredBoards.map((board, idx) => {
+                  const bId = board.id || board._id;
+                  return (
+                    <div
+                      key={bId}
+                      className="animate-fade-in-up"
+                      style={{ animationDelay: `${idx * 50}ms`, opacity: 0, animationFillMode: 'forwards' }}
+                    >
+                      <BoardCard
+                        board={board}
+                        onOpen={() => onOpenBoard(bId)}
+                        onToggleStar={() => onToggleStar(bId)}
+                        onShare={() => onShareBoard(board)}
+                        onDelete={() => onDeleteBoard(bId)}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>

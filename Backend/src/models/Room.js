@@ -30,6 +30,11 @@ const roomSchema = new mongoose.Schema(
       trim: true,
       default: 'Untitled Whiteboard',
     },
+    description: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     roomCode: {
       type: String,
       required: true,
@@ -63,11 +68,69 @@ const roomSchema = new mongoose.Schema(
       enum: ['dots', 'lines', 'cross', 'none'],
       default: 'dots',
     },
+    isStarred: {
+      type: Boolean,
+      default: false,
+    },
+    template: {
+      type: String,
+      default: 'blank',
+    },
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
+
+// Virtual id matching MongoDB _id
+roomSchema.virtual('id').get(function () {
+  return this._id ? this._id.toString() : undefined;
+});
+
+// Virtual createdBy for frontend dashboard ownership filtering
+roomSchema.virtual('createdBy').get(function () {
+  if (!this.owner) return undefined;
+  return this.owner._id ? this.owner._id.toString() : this.owner.toString();
+});
+
+// Virtual gridStyle mapping to gridType
+roomSchema.virtual('gridStyle').get(function () {
+  return this.gridType;
+});
+
+// Virtual collaborators array representing owner + members
+roomSchema.virtual('collaborators').get(function () {
+  const list = [];
+  if (this.owner) {
+    const isPopulated = typeof this.owner === 'object' && this.owner !== null && (this.owner._id || this.owner.id);
+    const ownerId = isPopulated ? (this.owner._id || this.owner.id).toString() : this.owner.toString();
+    list.push({
+      id: ownerId,
+      name: isPopulated ? this.owner.name || 'Owner' : 'Owner',
+      email: isPopulated ? this.owner.email || '' : '',
+      avatarColor: isPopulated ? this.owner.avatarColor || '#7F1D3F' : '#7F1D3F',
+      role: 'owner',
+    });
+  }
+  if (Array.isArray(this.members)) {
+    for (const m of this.members) {
+      if (!m || !m.user) continue;
+      const isPopulated = typeof m.user === 'object' && m.user !== null && (m.user._id || m.user.id);
+      const uId = isPopulated ? (m.user._id || m.user.id).toString() : m.user.toString();
+      list.push({
+        id: uId,
+        name: isPopulated ? m.user.name || 'Collaborator' : 'Collaborator',
+        email: isPopulated ? m.user.email || '' : '',
+        avatarColor: isPopulated ? m.user.avatarColor || '#A63D57' : '#A63D57',
+        role: m.role || 'viewer',
+        joinedAt: m.joinedAt,
+      });
+    }
+  }
+  return list;
+});
 
 /**
  * Static method generateUniqueRoomCode

@@ -13,6 +13,7 @@ import { useCanvas } from '../../hooks/useCanvas';
 import { useUndoRedo } from '../../hooks/useUndoRedo';
 import { BoardProvider, useBoard } from '../../context/BoardContext';
 import { resolveFill } from '../../utils/math';
+import { exportBoardAsPng } from '../../utils/exportPng';
 
 export default function WhiteboardWorkspace(props) {
   return (
@@ -237,10 +238,14 @@ function WhiteboardWorkspaceInner({
     setActiveTool('select');
   }, [setActiveTool]);
 
-  // Placeholder for export (TODO: exportPng.js)
   const handleExport = useCallback(() => {
-    window.alert('PNG export is coming soon');
-  }, []);
+    exportBoardAsPng({
+      elements,
+      gridStyle,
+      canvasTheme,
+      title: boardTitle,
+    });
+  }, [elements, gridStyle, canvasTheme, boardTitle]);
 
   // Clear board handler (shared by CanvasToolbar and SettingsDropdown)
   const handleClearBoard = useCallback(() => {
@@ -493,7 +498,7 @@ function WhiteboardWorkspaceInner({
           <span className="text-[#7F1D3F] font-bold cursor-pointer">Canvas</span>
           <span className="hover:text-[#292323] cursor-pointer" onClick={() => alert('Templates library')}>Templates</span>
           <span className="hover:text-[#292323] cursor-pointer" onClick={() => alert('Version history')}>History</span>
-          <span className="hover:text-[#292323] cursor-pointer" onClick={() => alert('Exporting canvas...')}>Export</span>
+          <span className="hover:text-[#292323] cursor-pointer" onClick={handleExport}>Export</span>
         </nav>
 
         {/* Right Controls: Zoom, Settings, Collaborators, Share */}

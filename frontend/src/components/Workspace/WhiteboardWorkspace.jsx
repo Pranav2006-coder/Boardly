@@ -28,7 +28,6 @@ function WhiteboardWorkspaceInner({
   const currentBoardId = board.id || board._id;
   const [boardTitle, setBoardTitle] = useState(board.title || 'Untitled Whiteboard');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [isViewOnly, setIsViewOnly] = useState(board.role === 'viewer' || board.userRole === 'viewer');
   const {
     isViewOnly,
     setIsViewOnly,
@@ -45,8 +44,6 @@ function WhiteboardWorkspaceInner({
     selectedId,
     setSelectedId,
   } = useBoard();
-  const [boardTitle, setBoardTitle] = useState(board.title || 'Untitled Whiteboard');
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
